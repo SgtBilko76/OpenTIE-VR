@@ -167,6 +167,7 @@ static struct {
 	float                 grip[VR_HAND_COUNT];
 	XrVector2f            stick[VR_HAND_COUNT];
 	int                   stick_click[VR_HAND_COUNT];
+	int                   has_bd_controllers;
 	int                   button_a, button_b, button_x, button_y, button_menu;
 	/* Controller text entry */
 	int                   text_mode;
@@ -415,6 +416,8 @@ static void vr_pick_extensions(void) {
 	static const char* const wanted[] = {
 		XR_FB_PASSTHROUGH_EXTENSION_NAME,
 		XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME,
+		/* PICO 4 / Neo 3 controllers (same button layout as Touch). */
+		"XR_BD_controller_interaction",
 	};
 	PFN_xrGetInstanceProcAddr                  gipa;
 	PFN_xrEnumerateInstanceExtensionProperties enumerate = NULL;
@@ -455,6 +458,8 @@ static void vr_pick_extensions(void) {
 		Aeron_LogInfo(VR_LOG, "requesting OpenXR extension %s", g_vr_extensions[i]);
 		if (strcmp(g_vr_extensions[i], XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0) {
 			g_vr.want_passthrough = 1;
+		} else if (strcmp(g_vr_extensions[i], "XR_BD_controller_interaction") == 0) {
+			g_vr.has_bd_controllers = 1;
 		}
 	}
 }
@@ -540,6 +545,21 @@ static int vr_create_actions(void) {
 		if (!vr_ok(p_xrSuggestInteractionProfileBindings(g_vr.instance, &suggested),
 				   "xrSuggestInteractionProfileBindings")) {
 			return 0;
+		}
+		/* PICO: same paths on the ByteDance profiles; optional. */
+		if (g_vr.has_bd_controllers) {
+			static const char* const pico_profiles[] = {
+				"/interaction_profiles/bytedance/pico4_controller",
+				"/interaction_profiles/bytedance/pico_neo3_controller",
+			};
+			for (size_t i = 0; i < SDL_arraysize(pico_profiles); ++i) {
+				suggested.interactionProfile = vr_path(pico_profiles[i]);
+				if (XR_SUCCEEDED(p_xrSuggestInteractionProfileBindings(g_vr.instance, &suggested))) {
+					Aeron_LogInfo(VR_LOG, "controller bindings for %s", pico_profiles[i]);
+				} else {
+					Aeron_LogWarn(VR_LOG, "no controller bindings for %s", pico_profiles[i]);
+				}
+			}
 		}
 	}
 

@@ -4,7 +4,7 @@
 
     <uses-feature android:name="android.hardware.vulkan.level" android:version="0" android:required="true" />
     <uses-feature android:name="android.hardware.vulkan.version" android:version="0x401000" android:required="true" />
-    <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
+    <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="false" />
     <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
     <!-- Declared so the launcher does not block start-up while controllers sleep. -->
     <uses-feature android:name="oculus.software.handtracking" android:required="false" />
@@ -42,6 +42,8 @@
 
         <meta-data android:name="com.oculus.supportedDevices" android:value="quest2|questpro|quest3|quest3s" />
         <meta-data android:name="com.oculus.intent.category.VR" android:value="vr_only" />
+        <!-- PICO: launch as a VR app. -->
+        <meta-data android:name="pvr.app.type" android:value="vr" />
 
         <activity
             android:name="com.bilko.opentievr.OpenTIEActivity"
