@@ -155,12 +155,18 @@ struct TieFlightRenderer {
 	 * eye reuses the first eye's shadow cascades. */
 	const struct TieVrStereoEye* vr_eye;
 	int vr_eye_index;
-	/* VR 3D cockpit (tie_remaster/vr_cockpit_model.inc), drawn seat-fixed in
-	 * each eye while vr_cockpit_on; body pose of the current eye frame. */
-	bool vr_cockpit_on;
-	bool vr_cockpit_failed;
-	AeronSceneMesh* vr_cockpit_mesh;
-	AeronFlightModel* vr_cockpit_model;
+	/* VR 3D cockpits drawn seat-fixed in each eye: slot 0 = the generated
+	 * TIE Fighter cockpit (tie_remaster/vr_cockpit_model.inc), the others
+	 * X-Wing Alliance cockpit OPTs read from the player's XWA data. */
+	struct {
+		char key[32];
+		bool tried;
+		bool is_xwa;
+		AeronFlightModel* model;
+		AeronSceneMesh* mesh;
+		float eye[3]; /* pilot eye in model space (metres) */
+	} vr_cockpits[4];
+	int vr_cockpit_slot; /* -1 = none this frame */
 	float vr_body_rows[9];
 	float vr_body_pos[3];
 	/* Scene renderer (aeron_scene). Owns the HDR color RT

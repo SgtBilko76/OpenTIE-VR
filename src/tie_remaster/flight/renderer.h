@@ -87,8 +87,13 @@ TieFlightRenderer* TieFlightRenderer_Current(void);
  * RenderFrame pair for one head-tracked eye (NULL = flat path). */
 struct TieVrStereoEye;
 void TieFlightRenderer_SetVrEye(TieFlightRenderer* g, const struct TieVrStereoEye* eye, int eye_index);
-/* Draw the generated 3D TIE cockpit model in the VR eyes. */
-void TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, bool on);
+/* Select the 3D cockpit for the VR eyes this frame: the X-Wing Alliance
+ * cockpit OPT `xwa_model` (e.g. "TIECOCKPIT.OPT") when the player's XWA data
+ * has it, else the generated cockpit when `builtin_ok`. NULL/false = none.
+ * Loads on first use (records uploads into `cmd`). Returns true when a 3D
+ * cockpit will be drawn. */
+bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* xwa_model,
+									bool builtin_ok);
 /* Tonemaps a transparent HDR overlay (VR cockpit/HUD) into `pass`, keeping
  * its coverage as premultiplied alpha. */
 void TieFlightRenderer_PresentOverlay(TieFlightRenderer* g, AeronCommandBuffer* cmd, AeronRenderPass* pass,

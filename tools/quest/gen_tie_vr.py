@@ -175,8 +175,8 @@ REPLACEMENTS = [
      '#include "tie_remaster/vr_stereo.h"\n#include "tie_vr/tie_vr_cockpit_panels.h"\n'),
     ("static void vr_end_xr_frame(void) {\n", COCKPIT_PANELS + "static void vr_end_xr_frame(void) {\n"),
     ("\tconst XrCompositionLayerBaseHeader* layers[3];\n",
-     "\tconst XrCompositionLayerBaseHeader* layers[16];\n"
-     "\tXrCompositionLayerQuad             panel_quads[12];\n"),
+     "\tconst XrCompositionLayerBaseHeader* layers[20];\n"
+     "\tXrCompositionLayerQuad             panel_quads[16];\n"),
     ("\t\t\t\tquad.size.height     = VR_HUD_DISTANCE * (hud_tan[2] + hud_tan[3]);\n"
      "\t\t\t}\n"
      "\t\t\tlayers[layer_count++]                 = (const XrCompositionLayerBaseHeader*)&quad;\n",

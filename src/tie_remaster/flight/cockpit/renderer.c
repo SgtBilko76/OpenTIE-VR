@@ -2961,7 +2961,8 @@ static bool TieCockpitRenderer_CockpitRecordLists(TieCockpitRenderer* cg, AeronC
 		 * is the frame there. The target box then draws over the cleared
 		 * window, which the host shows world-aligned. */
 		const TieCockpitRendererDrawSpace* space = &cg->pending_space;
-		const float* r = TIE_VR_COCKPIT_HUD_RECT;
+		const TieVrCockpitView* vr_view = TieVrCockpit_FindView(snap->cockpit.view_name);
+		const float* r = vr_view ? vr_view->hud_rect : TIE_VR_COCKPIT_VIEWS[0].hud_rect;
 		const float kx = space->scale_x * (float)coord_w / 640.0f;
 		const float ky = space->scale_y * (float)coord_h / 480.0f;
 		static const float clear_rgba[4] = { 0.0f, 0.0f, 0.0f, 0.0f };

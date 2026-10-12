@@ -158,6 +158,7 @@ TieFlightRenderer* TieFlightRenderer_Init(int rt_w, int rt_h, AeronTextureFormat
 		Aeron_RequestFatalRendererError("flight renderer allocation");
 		return NULL;
 	}
+	g->vr_cockpit_slot = -1;
 	g->rt_format = (AeronTextureFormat)rt_format_u32;
 	g->target_format = (AeronTextureFormat)target_format_u32;
 	g->requested_sample_count = render->msaa_samples == 8   ? AERON_SAMPLE_COUNT_8
@@ -406,14 +407,15 @@ void TieFlightRenderer_ReleaseMissionAssets(TieFlightRenderer* g) {
 void TieFlightRenderer_Shutdown(TieFlightRenderer* g) {
 	if (!g)
 		return;
-	if (g->vr_cockpit_mesh)
-		AeronScene_MeshDestroy(g->vr_cockpit_mesh);
-	if (g->vr_cockpit_model) {
-		Aeron_FlightModelFree(g->vr_cockpit_model);
-		free(g->vr_cockpit_model);
+	for (size_t i = 0; i < sizeof g->vr_cockpits / sizeof g->vr_cockpits[0]; ++i) {
+		if (g->vr_cockpits[i].mesh)
+			AeronScene_MeshDestroy(g->vr_cockpits[i].mesh);
+		if (g->vr_cockpits[i].model) {
+			Aeron_FlightModelFree(g->vr_cockpits[i].model);
+			free(g->vr_cockpits[i].model);
+		}
 	}
-	g->vr_cockpit_mesh = NULL;
-	g->vr_cockpit_model = NULL;
+	memset(g->vr_cockpits, 0, sizeof g->vr_cockpits);
 	TieFlightRenderer_ReleaseMissionAssets(g);
 	if (g->opt_sampler)
 		Aeron_DestroySampler(g->opt_sampler);
@@ -949,9 +951,4 @@ void TieFlightRenderer_PresentOverlay(TieFlightRenderer* g, AeronCommandBuffer* 
 	static const float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	AeronScenePresentChain_Draw(g->present_chain, pass, overlay, g->sampler_linear, NULL, 0.0f, width, height,
 								1.0f, tint, /*src_coverage=*/1);
-}
-
-void TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, bool on) {
-	if (g)
-		g->vr_cockpit_on = on;
 }

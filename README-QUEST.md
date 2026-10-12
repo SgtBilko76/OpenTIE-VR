@@ -2,7 +2,7 @@
 
 Standalone Meta Quest 3 port of OpenTIE (Star Wars: TIE Fighter) with
 OpenXR: menus on a virtual screen over passthrough, head-tracked stereo 3D
-space in flight, a 3D TIE Fighter cockpit with the original instruments, and
+space in flight, 3D cockpits with the original instruments, and
 Touch controller support.
 
 You need your own copy of TIE Fighter (Steam "STAR WARS TIE Fighter Special
@@ -21,7 +21,13 @@ Edition"). The APK contains no game data.
        adb push ".../STAR WARS Tie Fighter/collectors_cd/." /sdcard/OpenTIE/TIE95/
        adb push ".../STAR WARS Tie Fighter/remastered/." /sdcard/OpenTIE/TIE98/
 
-3. Start "OpenTIE VR" from Unknown Sources. On first start, allow
+3. Optional, for the X-Wing Alliance 3D cockpits: if you own Star Wars:
+   X-Wing Alliance, copy its game folder to `/sdcard/OpenXWA` (the same
+   folder OpenXWA VR uses), or just copy `FLIGHTMODELS/TIECOCKPIT.OPT` and
+   `FLIGHTMODELS/TIEBOMBERCOCKPIT.OPT` to `/sdcard/OpenTIE/`. Without them
+   the TIE Fighter gets a built-in 3D cockpit and the other craft their flat
+   cockpit picture.
+4. Start "OpenTIE VR" from Unknown Sources. On first start, allow
    "access to all files" when Android asks (or run
    `adb shell appops set --uid com.bilko.opentievr MANAGE_EXTERNAL_STORAGE allow`).
 
@@ -68,8 +74,9 @@ remapped in Settings > Controller):
 ## Known limitations (beta)
 
 - Quest 3 tested only.
-- Only the TIE Fighter has the 3D cockpit; other craft use the flat
-  cockpit picture in front of the stereo view.
+- 3D cockpits come from your own X-Wing Alliance copy (see Install). XWA
+  has no Gunboat or Missile Boat cockpit, so those use the TIE ball cockpit,
+  as in X-Wing Alliance.
 - Motion blur, temporal upscaling and ambient occlusion are off in stereo.
 - Signed with a debug key.
 

@@ -1,5 +1,6 @@
 #include "tie_remaster/remaster.h"
 #include "tie_remaster/vr_stereo.h"
+#include "tie_vr/tie_vr_cockpit_panels.h"
 
 #include "aeron/external_present.h"
 #include <math.h>
@@ -905,11 +906,14 @@ static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrS
 	if (!cmd)
 		return false;
 	bool ok = TieRemaster_EnsureVrTargets(cmd, width, height);
-	/* 3D cockpit: the generated TIE Fighter model in the eyes, instruments
-	 * only in the overlay. Other craft keep the flat cockpit overlay. */
-	const bool cockpit3d = snapshot->cockpit.classic_w == 640 &&
-						   strncmp(snapshot->cockpit.view_name, "TIEFTR12", sizeof snapshot->cockpit.view_name) == 0;
-	TieFlightRenderer_SetVrCockpit(flight->renderer, cockpit3d);
+	/* 3D cockpit: X-Wing Alliance's cockpit model for this craft (from the
+	 * player's XWA data) or the generated TIE Fighter one in the eyes, and
+	 * only the instruments in the overlay. Without a model the craft keeps
+	 * its flat cockpit overlay. */
+	const TieVrCockpitView* vr_view =
+		snapshot->cockpit.classic_w == 640 ? TieVrCockpit_FindView(snapshot->cockpit.view_name) : NULL;
+	const bool cockpit3d = TieFlightRenderer_SetVrCockpit(flight->renderer, cmd, vr_view ? vr_view->xwa_model : NULL,
+														  vr_view && vr_view->has_builtin);
 	if (flight->vr_cockpit)
 		TieCockpitRenderer_SetVrInstrumentsOnly(flight->vr_cockpit, cockpit3d);
 	for (int eye = 0; ok && eye < 2; ++eye) {
@@ -996,7 +1000,7 @@ static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrS
 			(float)presentation->modern.height / 480.0f,
 		};
 		const float frame_size[2] = { (float)presentation->frame.width, (float)presentation->frame.height };
-		TieRemasterVr_SetCockpit3d(1, map, frame_size);
+		TieRemasterVr_SetCockpit3d(1, map, frame_size, vr_view->view);
 	}
 	static int logged = -1;
 	if (logged != (int)cockpit3d) {

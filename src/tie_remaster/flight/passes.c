@@ -194,49 +194,176 @@ static void TieFlightPasses_ApplyVrEye(TieFlightRenderer* g, TieFlightCamera* fc
 
 #include "tie_remaster/vr_cockpit_model.inc"
 
-/* Builds the GPU mesh of the generated cockpit once (first stereo frame). */
-static void TieFlightPasses_EnsureVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd) {
-	if (g->vr_cockpit_mesh || g->vr_cockpit_failed)
-		return;
-	g->vr_cockpit_model = calloc(1, sizeof *g->vr_cockpit_model);
-	if (!g->vr_cockpit_model ||
-		!Aeron_FlightModelBuildMemory(tie_vr_cockpit_glb, tie_vr_cockpit_glb_size, "tie_vr_cockpit",
-									  g->vr_cockpit_model)) {
-		Aeron_LogWarn("tie.vr", "3D cockpit model failed to load");
-		free(g->vr_cockpit_model);
-		g->vr_cockpit_model = NULL;
-		g->vr_cockpit_failed = true;
-		return;
+/* X-Wing Alliance cockpit models are read from the player's own XWA copy on
+ * the device (they are game data, so they are never shipped with OpenTIE).
+ * The first directory holding the file wins. */
+/* Albedo scale for the XWA cockpit textures under sunlight (1.0 = as authored). */
+#define TIE_VR_XWA_COCKPIT_ALBEDO 0.5f
+
+static const char* const TIE_VR_XWA_COCKPIT_DIRS[] = {
+	"/sdcard/OpenTIE",
+	"/sdcard/OpenXWA/FLIGHTMODELS",
+	"/sdcard/OpenXWA/FlightModels",
+};
+
+static bool TieFlightPasses_LoadXwaCockpit(const char* file_name, AeronFlightModel* model) {
+	char path[256];
+	FILE* file = NULL;
+	const char* dir = getenv("OPENTIE_VR_XWA_FLIGHTMODELS");
+	if (dir) {
+		snprintf(path, sizeof path, "%s/%s", dir, file_name);
+		file = fopen(path, "rb");
 	}
-	AeronSceneMeshCreateStatus status = AERON_SCENE_MESH_CREATE_SUCCESS;
-	g->vr_cockpit_mesh = AeronScene_MeshCreate(cmd, g->vr_cockpit_model, "tie_vr_cockpit", &status);
-	if (!g->vr_cockpit_mesh) {
-		Aeron_LogWarn("tie.vr", "3D cockpit mesh creation failed (%d)", (int)status);
-		g->vr_cockpit_failed = true;
-		return;
+	for (size_t i = 0; !file && i < sizeof TIE_VR_XWA_COCKPIT_DIRS / sizeof TIE_VR_XWA_COCKPIT_DIRS[0]; ++i) {
+		snprintf(path, sizeof path, "%s/%s", TIE_VR_XWA_COCKPIT_DIRS[i], file_name);
+		file = fopen(path, "rb");
 	}
-	Aeron_LogInfo("tie.vr", "3D cockpit ready: %u triangles", g->vr_cockpit_mesh->index_count / 3u);
+	if (!file) {
+		Aeron_LogInfo("tie.vr", "X-Wing Alliance %s not found", file_name);
+		return false;
+	}
+	fseek(file, 0, SEEK_END);
+	const long size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	void* bytes = size > 0 && size < 64L * 1024L * 1024L ? malloc((size_t)size) : NULL;
+	const bool read = bytes && fread(bytes, 1, (size_t)size, file) == (size_t)size;
+	fclose(file);
+	if (!read) {
+		free(bytes);
+		return false;
+	}
+	const AeronOptModelBuildOptions options = {
+		.smooth_angle_degrees = 90.0f,
+		.emissive_strength = 1.5f,
+		.emissive = true,
+	};
+	AeronOptModelError error = { 0 };
+	const bool built = Aeron_OptModelBuildMemory(bytes, (size_t)size, file_name, &options, model, &error);
+	free(bytes);
+	if (!built) {
+		Aeron_LogWarn("tie.vr", "%s: %s", path, error.message);
+		memset(model, 0, sizeof *model);
+		return false;
+	}
+	Aeron_LogInfo("tie.vr", "3D cockpit: X-Wing Alliance model from %s", path);
+	return true;
 }
 
-/* Seat-fixed cockpit instance: model axes are the body eye axes (x right,
- * y down, z forward) in metres, so world = body_pos + body^T * v. */
+/* Finds (loading on first use) the cockpit slot for `key`: an XWA OPT file
+ * name, or "" for the generated cockpit. Returns -1 when unavailable. */
+static int TieFlightPasses_VrCockpitSlot(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* key) {
+	const int count = (int)(sizeof g->vr_cockpits / sizeof g->vr_cockpits[0]);
+	int slot = -1;
+	for (int i = 0; i < count; ++i) {
+		if (g->vr_cockpits[i].tried && strcmp(g->vr_cockpits[i].key, key) == 0)
+			return g->vr_cockpits[i].mesh ? i : -1;
+		if (slot < 0 && !g->vr_cockpits[i].tried)
+			slot = i;
+	}
+	if (slot < 0)
+		return -1;
+	snprintf(g->vr_cockpits[slot].key, sizeof g->vr_cockpits[slot].key, "%s", key);
+	g->vr_cockpits[slot].tried = true;
+	AeronFlightModel* model = calloc(1, sizeof *model);
+	if (!model)
+		return -1;
+	const bool xwa = key[0] != '\0';
+	const bool loaded = xwa ? TieFlightPasses_LoadXwaCockpit(key, model)
+							: Aeron_FlightModelBuildMemory(tie_vr_cockpit_glb, tie_vr_cockpit_glb_size,
+														   "tie_vr_cockpit", model);
+	if (!loaded) {
+		free(model);
+		return -1;
+	}
+	if (xwa) {
+		/* Sunlight made the XWA cockpit textures glare: darken the albedo and
+		 * keep the surfaces rough (no shiny highlights) before upload. */
+		for (uint32_t i = 0; i < model->render.material_count; ++i) {
+			AeronGltfMaterial* material = &model->render.materials[i];
+			for (int c = 0; c < 3; ++c)
+				material->base_color_factor[c] *= TIE_VR_XWA_COCKPIT_ALBEDO;
+			if (material->roughness_factor < 0.75f)
+				material->roughness_factor = 0.75f;
+		}
+	}
+	AeronSceneMeshCreateStatus status = AERON_SCENE_MESH_CREATE_SUCCESS;
+	AeronSceneMesh* mesh = AeronScene_MeshCreate(cmd, model, xwa ? key : "tie_vr_cockpit", &status);
+	if (!mesh) {
+		Aeron_LogWarn("tie.vr", "3D cockpit mesh creation failed (%d)", (int)status);
+		Aeron_FlightModelFree(model);
+		free(model);
+		return -1;
+	}
+	/* XWA cockpit OPTs sit where the cockpit is on the ship: the TIE ball at
+	 * the origin, the Bomber's pod 1.84 m to the side. The pilot's eye is at
+	 * the ball's centre across (x) and at the origin along/up. */
+	if (xwa) {
+		g->vr_cockpits[slot].eye[0] = (model->bounds.min.x + model->bounds.max.x) * 0.5f;
+		g->vr_cockpits[slot].eye[1] = 0.0f;
+		g->vr_cockpits[slot].eye[2] = 0.0f;
+	}
+	g->vr_cockpits[slot].is_xwa = xwa;
+	g->vr_cockpits[slot].model = model;
+	g->vr_cockpits[slot].mesh = mesh;
+	Aeron_LogInfo("tie.vr", "3D cockpit %s ready: %u triangles", xwa ? key : "(built-in)", mesh->index_count / 3u);
+	return slot;
+}
+
+bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* xwa_model,
+									bool builtin_ok) {
+	if (!g)
+		return false;
+	g->vr_cockpit_slot = -1;
+	if (!cmd)
+		return false;
+	if (xwa_model && xwa_model[0])
+		g->vr_cockpit_slot = TieFlightPasses_VrCockpitSlot(g, cmd, xwa_model);
+	if (g->vr_cockpit_slot < 0 && builtin_ok)
+		g->vr_cockpit_slot = TieFlightPasses_VrCockpitSlot(g, cmd, "");
+	return g->vr_cockpit_slot >= 0;
+}
+
+/* Seat-fixed cockpit instance, world = body_pos + body^T * axes * v.
+ * Generated model: axes are the body eye axes (x right, y down, z forward).
+ * XWA OPT: x right, -y forward, +z up (the ship convention), eye at the
+ * model origin. Both in metres. */
 static void TieFlightPasses_AddVrCockpit(TieFlightRenderer* g) {
-	if (!g->vr_eye || !g->vr_cockpit_on || !g->vr_cockpit_mesh)
+	if (!g->vr_eye || g->vr_cockpit_slot < 0 || g->vr_cockpit_slot >= (int)(sizeof g->vr_cockpits / sizeof g->vr_cockpits[0]) ||
+		!g->vr_cockpits[g->vr_cockpit_slot].mesh)
 		return;
+	AeronSceneMesh* mesh = g->vr_cockpits[g->vr_cockpit_slot].mesh;
+	const bool is_xwa = g->vr_cockpits[g->vr_cockpit_slot].is_xwa;
+	static const float generated_axes[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 1 };
+	static const float xwa_axes[9] = { 1, 0, 0, 0, 0, -1, 0, -1, 0 };
+	const float* axes = is_xwa ? xwa_axes : generated_axes;
 	AeronSceneMeshInstance in;
 	memset(&in, 0, sizeof in);
-	in.mesh = g->vr_cockpit_mesh;
+	in.mesh = mesh;
 	const float s = AERON_OPT_UNITS_PER_METER;
 	for (int r = 0; r < 3; ++r) {
-		for (int c = 0; c < 3; ++c)
-			in.transform[r * 4 + c] = g->vr_body_rows[c * 3 + r] * s;
+		for (int c = 0; c < 3; ++c) {
+			float v = 0.0f;
+			for (int k = 0; k < 3; ++k)
+				v += g->vr_body_rows[k * 3 + r] * axes[k * 3 + c];
+			in.transform[r * 4 + c] = v * s;
+		}
 		in.transform[r * 4 + 3] = g->vr_body_pos[r];
 	}
+	/* Put the pilot's eye point of the model at the eye. */
+	const float* eye = g->vr_cockpits[g->vr_cockpit_slot].eye;
+	for (int r = 0; r < 3; ++r)
+		in.transform[r * 4 + 3] -= in.transform[r * 4 + 0] * eye[0] + in.transform[r * 4 + 1] * eye[1] +
+								   in.transform[r * 4 + 2] * eye[2];
 	in.transform[15] = 1.0f;
 	memcpy(in.prev_transform, in.transform, sizeof in.prev_transform);
 	in.zero_velocity = 1;
-	in.no_local_lights = 0;
 	in.shadow_flags = AERON_SCENE_INSTANCE_NO_CAST_SHADOW | AERON_SCENE_INSTANCE_NO_RECEIVE_SHADOW;
+	if (is_xwa) {
+		/* Lit like the TIE ship models (PBR sun + laser lights), so the cockpit
+		 * has the same dark metal look; unlit textures looked washed out. */
+		if (mesh->all_materials_single_sided)
+			in.cull_mode = AERON_CULL_BACK;
+	}
 	AeronScene_AddMeshInstance(g->scene, &in);
 }
 
@@ -817,8 +944,6 @@ bool TieFlightRenderer_PrepareFrame(TieFlightRenderer* g, AeronCommandBuffer* cm
 
 	if (!TieFlightRenderer_PrepareMissionAssets(g, cmd, curr))
 		return false;
-	if (g->vr_eye && g->vr_cockpit_on)
-		TieFlightPasses_EnsureVrCockpit(g, cmd);
 
 	/* Build view-projection + viewport rects. The helper preserves the
 	 * captured classic aperture's focal scale while extending the

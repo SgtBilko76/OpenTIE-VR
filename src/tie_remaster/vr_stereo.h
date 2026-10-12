@@ -49,13 +49,15 @@ int TieRemasterVr_HudTangents(float* tan_left, float* tan_right, float* tan_up, 
  * to flat-frame pixels: frame = (map[0] + x * map[2], map[1] + y * map[3]);
  * frame_size is the flat frame's width/height. Returns 0 when off. */
 int TieRemasterVr_Cockpit3d(float classic_map[4], float frame_size[2]);
+/* Cockpit view name (CP640 LFD basename) of the 3D cockpit, or NULL. */
+const char* TieRemasterVr_Cockpit3dView(void);
 
 /* Remaster-internal: the frame published for this host frame (NULL when
  * none), and the result of the stereo render (tangents of the flat frame's
  * edges as seen from the seat; NULL when not rendered). */
 const TieVrStereoFrame* TieRemasterVr_PublishedFrame(void);
 void                    TieRemasterVr_SetRendered(int rendered, const float frame_tangents[4]);
-void                    TieRemasterVr_SetCockpit3d(int on, const float classic_map[4], const float frame_size[2]);
+void TieRemasterVr_SetCockpit3d(int on, const float classic_map[4], const float frame_size[2], const char* view);
 
 #ifdef __cplusplus
 }

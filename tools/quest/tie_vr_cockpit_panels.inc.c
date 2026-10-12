@@ -16,7 +16,9 @@ static uint32_t vr_add_cockpit_panels(XrCompositionLayerQuad* hud, const float h
 	const float tan_w = hud_tan[0] + hud_tan[1];
 	const float tan_h = hud_tan[2] + hud_tan[3];
 
-	if (!TieRemasterVr_Cockpit3d(map, frame) || frame[0] <= 0.0f || frame[1] <= 0.0f) {
+	const TieVrCockpitView* view = TieVrCockpit_FindView(TieRemasterVr_Cockpit3dView());
+
+	if (!view || !TieRemasterVr_Cockpit3d(map, frame) || frame[0] <= 0.0f || frame[1] <= 0.0f) {
 		return count;
 	}
 	const float sx = (float)VR_SCREEN_WIDTH_PX / frame[0];
@@ -24,7 +26,7 @@ static uint32_t vr_add_cockpit_panels(XrCompositionLayerQuad* hud, const float h
 
 	/* HUD: only the window region, still on the game camera's frustum. */
 	{
-		const float* r   = TIE_VR_COCKPIT_HUD_RECT;
+		const float* r   = view->hud_rect;
 		const float  fx0 = map[0] + r[0] * map[2];
 		const float  fy0 = map[1] + r[1] * map[3];
 		const float  fx1 = map[0] + r[2] * map[2];
@@ -45,8 +47,8 @@ static uint32_t vr_add_cockpit_panels(XrCompositionLayerQuad* hud, const float h
 		hud->size.height                      = VR_HUD_DISTANCE * (tu - td);
 	}
 
-	for (size_t i = 0; i < SDL_arraysize(TIE_VR_COCKPIT_PANELS) && count < capacity; ++i) {
-		const TieVrCockpitPanel* panel = &TIE_VR_COCKPIT_PANELS[i];
+	for (size_t i = 0; i < view->panel_count && count < capacity; ++i) {
+		const TieVrCockpitPanel* panel = &view->panels[i];
 		XrCompositionLayerQuad*  quad  = &quads[i];
 		const float              fx0   = map[0] + panel->src[0] * map[2];
 		const float              fy0   = map[1] + panel->src[1] * map[3];

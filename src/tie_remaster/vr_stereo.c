@@ -17,6 +17,7 @@ static int              g_vr_tangents_valid;
 static int              g_vr_cockpit3d;
 static float            g_vr_classic_map[4];
 static float            g_vr_frame_size[2];
+static char             g_vr_cockpit_view[16];
 
 void TieRemasterVr_SetStereoFrame(const TieVrStereoFrame* frame) {
 	g_vr_frame_valid = frame != NULL && frame->eyes[0].target && frame->eyes[1].target;
@@ -49,9 +50,13 @@ int TieRemasterVr_HudTangents(float* tan_left, float* tan_right, float* tan_up, 
 	return 1;
 }
 
-void TieRemasterVr_SetCockpit3d(int on, const float classic_map[4], const float frame_size[2]) {
-	g_vr_cockpit3d = on && classic_map && frame_size;
+void TieRemasterVr_SetCockpit3d(int on, const float classic_map[4], const float frame_size[2], const char* view) {
+	g_vr_cockpit3d = on && classic_map && frame_size && view;
 	if (g_vr_cockpit3d) {
+		size_t n = 0;
+		for (; view[n] && n + 1 < sizeof g_vr_cockpit_view; ++n)
+			g_vr_cockpit_view[n] = view[n];
+		g_vr_cockpit_view[n] = '\0';
 		for (int i = 0; i < 4; ++i)
 			g_vr_classic_map[i] = classic_map[i];
 		g_vr_frame_size[0] = frame_size[0];
@@ -68,3 +73,5 @@ int TieRemasterVr_Cockpit3d(float classic_map[4], float frame_size[2]) {
 	frame_size[1] = g_vr_frame_size[1];
 	return 1;
 }
+
+const char* TieRemasterVr_Cockpit3dView(void) { return g_vr_rendered && g_vr_cockpit3d ? g_vr_cockpit_view : NULL; }
