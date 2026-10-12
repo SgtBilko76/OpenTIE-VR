@@ -68,5 +68,7 @@ void TieInput_SuppressKey(int aeron_key);
 void TieInput_BeginFrame(int32_t delta_us);
 void TieInput_UpdateKeyboard(const AeronInputSnapshot* input, bool blocked);
 void TieInput_BlockKeyboard(void);
+/* Hides mouse buttons from the game while a host overlay owns the pointer. */
+void TieInput_SetOverlayMouseBlocked(bool blocked);
 
 #endif

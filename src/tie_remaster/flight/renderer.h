@@ -83,6 +83,17 @@ void TieFlightRenderer_SetCockpit(TieFlightRenderer* g, struct TieCockpitRendere
 /* Returns the process-wide live renderer, or NULL. */
 TieFlightRenderer* TieFlightRenderer_Current(void);
 
+/* VR stereo (tie_remaster/vr_stereo.h): render the next PrepareFrame /
+ * RenderFrame pair for one head-tracked eye (NULL = flat path). */
+struct TieVrStereoEye;
+void TieFlightRenderer_SetVrEye(TieFlightRenderer* g, const struct TieVrStereoEye* eye, int eye_index);
+/* Draw the generated 3D TIE cockpit model in the VR eyes. */
+void TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, bool on);
+/* Tonemaps a transparent HDR overlay (VR cockpit/HUD) into `pass`, keeping
+ * its coverage as premultiplied alpha. */
+void TieFlightRenderer_PresentOverlay(TieFlightRenderer* g, AeronCommandBuffer* cmd, AeronRenderPass* pass,
+									 AeronTexture* overlay, int width, int height);
+
 /* Applies bloom outside any active pass. The message bar is excluded from
  * bloom generation and composition. Invalid inputs and non-flight scenes are
  * no-ops. */

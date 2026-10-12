@@ -406,6 +406,14 @@ void TieFlightRenderer_ReleaseMissionAssets(TieFlightRenderer* g) {
 void TieFlightRenderer_Shutdown(TieFlightRenderer* g) {
 	if (!g)
 		return;
+	if (g->vr_cockpit_mesh)
+		AeronScene_MeshDestroy(g->vr_cockpit_mesh);
+	if (g->vr_cockpit_model) {
+		Aeron_FlightModelFree(g->vr_cockpit_model);
+		free(g->vr_cockpit_model);
+	}
+	g->vr_cockpit_mesh = NULL;
+	g->vr_cockpit_model = NULL;
 	TieFlightRenderer_ReleaseMissionAssets(g);
 	if (g->opt_sampler)
 		Aeron_DestroySampler(g->opt_sampler);
@@ -921,4 +929,29 @@ void TieFlightRenderer_PresentSwapchain(TieFlightRenderer* g, AeronCommandBuffer
 		g->swapchain_present_chain, pass, Aeron_RenderTargetGetTexture(scene_target), g->sampler_linear,
 		bloom_active ? Aeron_RenderTargetGetTexture(bloom_target) : NULL, AeronSceneBloom_Intensity(),
 		g->rt_w, g->rt_h, g->last_bloom_bar_y_uv, tint, 0);
+}
+
+/* ===== VR stereo ====================================================== */
+
+void TieFlightRenderer_SetVrEye(TieFlightRenderer* g, const struct TieVrStereoEye* eye, int eye_index) {
+	if (!g)
+		return;
+	g->vr_eye = eye;
+	g->vr_eye_index = eye ? eye_index : 0;
+	if (!eye && g->scene)
+		AeronScene_SetDirectionalShadowReuse(g->scene, 0);
+}
+
+void TieFlightRenderer_PresentOverlay(TieFlightRenderer* g, AeronCommandBuffer* cmd, AeronRenderPass* pass,
+									 AeronTexture* overlay, int width, int height) {
+	if (!g || !cmd || !pass || !overlay || !g->present_chain)
+		return;
+	static const float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	AeronScenePresentChain_Draw(g->present_chain, pass, overlay, g->sampler_linear, NULL, 0.0f, width, height,
+								1.0f, tint, /*src_coverage=*/1);
+}
+
+void TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, bool on) {
+	if (g)
+		g->vr_cockpit_on = on;
 }

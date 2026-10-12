@@ -1,4 +1,5 @@
 #include "tie_app/frame_loop.h"
+#include "tie_app/vr_keyboard.h"
 
 #include "tie_runtime/input/controller_mapping.h"
 #include <stdbool.h>
@@ -187,6 +188,7 @@ void TieFrameLoop_Run(void) {
 		/* Do not let the input edge that opened the menu close it again. */
 		if (!settings_opened_this_frame)
 			TieSettings_Frame(input, (float)delta_us * 1e-6f);
+		TieVrKeyboard_Frame(input, (float)delta_us * 1e-6f);
 		TieInput_SyncSystemCursor(TieSettings_Open());
 
 		if (Aeron_FatalErrorRequested())

@@ -15,8 +15,10 @@
 #include "tie_remaster/flight/stars.h"
 #include "tie_remaster/gpu_debug.h"
 #include "tie_remaster/scene2d/srgb_math.h"
+#include "tie_remaster/vr_stereo.h"
 
 #include "aeron/aeron.h"
+#include "aeron/asset/opt_model.h"
 #include "aeron/log.h"
 #include "aeron/scene/world.h"
 
@@ -110,6 +112,132 @@ static AeronTexture* TieFlightRenderer_LoadSkyboxCube(TieFlightRenderer* g, Aero
 		Aeron_RequestFatalError("Flight Asset Error", error);
 	}
 	return tex;
+}
+
+/* ===== VR stereo eye ================================================ */
+
+static void TieFlightPasses_RowsToQuat(const float m[9], float q[4]) {
+	const float trace = m[0] + m[4] + m[8];
+	if (trace > 0.0f) {
+		const float sq = sqrtf(trace + 1.0f) * 2.0f;
+		q[0] = 0.25f * sq;
+		q[1] = (m[7] - m[5]) / sq;
+		q[2] = (m[2] - m[6]) / sq;
+		q[3] = (m[3] - m[1]) / sq;
+	} else if (m[0] > m[4] && m[0] > m[8]) {
+		const float sq = sqrtf(1.0f + m[0] - m[4] - m[8]) * 2.0f;
+		q[0] = (m[7] - m[5]) / sq;
+		q[1] = 0.25f * sq;
+		q[2] = (m[1] + m[3]) / sq;
+		q[3] = (m[2] + m[6]) / sq;
+	} else if (m[4] > m[8]) {
+		const float sq = sqrtf(1.0f + m[4] - m[0] - m[8]) * 2.0f;
+		q[0] = (m[2] - m[6]) / sq;
+		q[1] = (m[1] + m[3]) / sq;
+		q[2] = 0.25f * sq;
+		q[3] = (m[5] + m[7]) / sq;
+	} else {
+		const float sq = sqrtf(1.0f + m[8] - m[0] - m[4]) * 2.0f;
+		q[0] = (m[3] - m[1]) / sq;
+		q[1] = (m[2] + m[6]) / sq;
+		q[2] = (m[5] + m[7]) / sq;
+		q[3] = 0.25f * sq;
+	}
+}
+
+/* Replaces the scene camera by one VR eye: the head pose (relative to the
+ * seat) is applied on top of the game ("body") camera, and the projection
+ * becomes the eye's asymmetric frustum. Game eye axes are x right, y down,
+ * z forward; OpenXR axes are x right, y up, -z forward (C = diag(1,-1,-1)). */
+static void TieFlightPasses_ApplyVrEye(TieFlightRenderer* g, TieFlightCamera* fcam, const TieVrStereoEye* eye) {
+	AeronSceneCamera* camera = &fcam->camera;
+	float body[9];
+	float head[9];
+	float rel[9];
+	float rows[9];
+	const float q[4] = { eye->orientation[3], eye->orientation[0], eye->orientation[1], eye->orientation[2] };
+
+	TieRenderMath_QuaternionToMat3(camera->ori, body); /* world -> body eye, rows = body axes */
+	memcpy(g->vr_body_rows, body, sizeof g->vr_body_rows);
+	memcpy(g->vr_body_pos, camera->pos, sizeof g->vr_body_pos);
+	TieRenderMath_QuaternionToMat3(q, head);           /* head-local -> LOCAL, OpenXR axes */
+	/* rel = C * head * C maps eye-local game axes to body game axes. */
+	for (int r = 0; r < 3; ++r)
+		for (int c = 0; c < 3; ++c) {
+			const float sign = (r == 0 ? 1.0f : -1.0f) * (c == 0 ? 1.0f : -1.0f);
+			rel[r * 3 + c] = head[r * 3 + c] * sign;
+		}
+	/* World -> eye = rel^T * body. */
+	for (int r = 0; r < 3; ++r)
+		for (int c = 0; c < 3; ++c)
+			rows[r * 3 + c] =
+				rel[0 * 3 + r] * body[0 * 3 + c] + rel[1 * 3 + r] * body[1 * 3 + c] + rel[2 * 3 + r] * body[2 * 3 + c];
+	TieFlightPasses_RowsToQuat(rows, camera->ori);
+
+	/* Eye position: seat-relative metres -> body game axes -> world units. */
+	const float upm = 1.0f / AERON_OPT_METERS_PER_UNIT;
+	const float local[3] = { eye->position_m[0] * upm, -eye->position_m[1] * upm, -eye->position_m[2] * upm };
+	for (int axis = 0; axis < 3; ++axis)
+		camera->pos[axis] += body[0 * 3 + axis] * local[0] + body[1 * 3 + axis] * local[1] + body[2 * 3 + axis] * local[2];
+
+	const float tl = eye->tan_left, tr = eye->tan_right, tu = eye->tan_up, td = eye->tan_down;
+	camera->h_half_rad = atanf((tl + tr) * 0.5f);
+	camera->v_half_rad = atanf((tu + td) * 0.5f);
+	camera->proj_x_offset = (tl - tr) / (tl + tr);
+	camera->proj_y_offset = (td - tu) / (tu + td);
+	fcam->h_half_rad = camera->h_half_rad;
+	fcam->v_half_rad = camera->v_half_rad;
+	fcam->proj_x_offset = camera->proj_x_offset;
+	fcam->proj_y_offset = camera->proj_y_offset;
+	AeronScene_ComputeViewProj(camera, fcam->view_proj);
+}
+
+#include "tie_remaster/vr_cockpit_model.inc"
+
+/* Builds the GPU mesh of the generated cockpit once (first stereo frame). */
+static void TieFlightPasses_EnsureVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd) {
+	if (g->vr_cockpit_mesh || g->vr_cockpit_failed)
+		return;
+	g->vr_cockpit_model = calloc(1, sizeof *g->vr_cockpit_model);
+	if (!g->vr_cockpit_model ||
+		!Aeron_FlightModelBuildMemory(tie_vr_cockpit_glb, tie_vr_cockpit_glb_size, "tie_vr_cockpit",
+									  g->vr_cockpit_model)) {
+		Aeron_LogWarn("tie.vr", "3D cockpit model failed to load");
+		free(g->vr_cockpit_model);
+		g->vr_cockpit_model = NULL;
+		g->vr_cockpit_failed = true;
+		return;
+	}
+	AeronSceneMeshCreateStatus status = AERON_SCENE_MESH_CREATE_SUCCESS;
+	g->vr_cockpit_mesh = AeronScene_MeshCreate(cmd, g->vr_cockpit_model, "tie_vr_cockpit", &status);
+	if (!g->vr_cockpit_mesh) {
+		Aeron_LogWarn("tie.vr", "3D cockpit mesh creation failed (%d)", (int)status);
+		g->vr_cockpit_failed = true;
+		return;
+	}
+	Aeron_LogInfo("tie.vr", "3D cockpit ready: %u triangles", g->vr_cockpit_mesh->index_count / 3u);
+}
+
+/* Seat-fixed cockpit instance: model axes are the body eye axes (x right,
+ * y down, z forward) in metres, so world = body_pos + body^T * v. */
+static void TieFlightPasses_AddVrCockpit(TieFlightRenderer* g) {
+	if (!g->vr_eye || !g->vr_cockpit_on || !g->vr_cockpit_mesh)
+		return;
+	AeronSceneMeshInstance in;
+	memset(&in, 0, sizeof in);
+	in.mesh = g->vr_cockpit_mesh;
+	const float s = AERON_OPT_UNITS_PER_METER;
+	for (int r = 0; r < 3; ++r) {
+		for (int c = 0; c < 3; ++c)
+			in.transform[r * 4 + c] = g->vr_body_rows[c * 3 + r] * s;
+		in.transform[r * 4 + 3] = g->vr_body_pos[r];
+	}
+	in.transform[15] = 1.0f;
+	memcpy(in.prev_transform, in.transform, sizeof in.prev_transform);
+	in.zero_velocity = 1;
+	in.no_local_lights = 0;
+	in.shadow_flags = AERON_SCENE_INSTANCE_NO_CAST_SHADOW | AERON_SCENE_INSTANCE_NO_RECEIVE_SHADOW;
+	AeronScene_AddMeshInstance(g->scene, &in);
 }
 
 /* ===== Per-frame driver ============================================== */
@@ -363,7 +491,8 @@ static void TieFlightRenderer_SceneHookAfterUpscale(AeronCommandBuffer* cmd, Aer
 	const TieFlightSceneFrame* fr = &g->frame;
 	if (!fr->curr || !pass)
 		return;
-	if (g->cockpit) {
+	/* VR eyes draw the cockpit/HUD once into a separate overlay instead. */
+	if (g->cockpit && !g->vr_eye) {
 		TIE_GPU_MARKER(cmd, "Cockpit and flight HUD");
 		TieCockpitRenderer_RenderInPass(g->cockpit, cmd, pass, AeronScene_SceneRt(g->scene), fr->curr);
 	}
@@ -688,6 +817,8 @@ bool TieFlightRenderer_PrepareFrame(TieFlightRenderer* g, AeronCommandBuffer* cm
 
 	if (!TieFlightRenderer_PrepareMissionAssets(g, cmd, curr))
 		return false;
+	if (g->vr_eye && g->vr_cockpit_on)
+		TieFlightPasses_EnsureVrCockpit(g, cmd);
 
 	/* Build view-projection + viewport rects. The helper preserves the
 	 * captured classic aperture's focal scale while extending the
@@ -698,6 +829,8 @@ bool TieFlightRenderer_PrepareFrame(TieFlightRenderer* g, AeronCommandBuffer* cm
 	 * scalars below (same transplanted math). */
 	TieFlightCamera fcam;
 	TieRenderMath_BuildCamera(&fcam, &curr->camera, g->rt_w, g->rt_h);
+	if (g->vr_eye)
+		TieFlightPasses_ApplyVrEye(g, &fcam, (const TieVrStereoEye*)g->vr_eye);
 
 	const AeronRectI vp =
 		TieFlightPasses_ViewportRect(fcam.flight_vp_x, fcam.flight_vp_y, fcam.flight_vp_w, fcam.flight_vp_h);
@@ -711,9 +844,12 @@ bool TieFlightRenderer_PrepareFrame(TieFlightRenderer* g, AeronCommandBuffer* cm
 	 * failed chain degrades to the monolithic pass (SSAO) or no blur
 	 * (MB) exactly like the pre-switch pipeline-gate checks did. */
 	const bool hd_full = g->scene_model_backend;
-	const bool mb_on = g->mb_quality != MB_OFF && hd_full;
-	const bool fsr_on = g->fsr_mode != AERON_TEMPORAL_OFF && hd_full && curr->hyperspace.phase == 0;
-	const bool ssao_on = g->ssao.ssao_quality != SSAO_OFF && g->ssao.ssao_intensity > 0.0f && hd_full;
+	/* VR eyes: temporal history is per view (two eyes would mix it) and SSAO
+	 * doubles with the eye count, so both stay off in stereo. */
+	const bool vr_eye = g->vr_eye != NULL;
+	const bool mb_on = g->mb_quality != MB_OFF && hd_full && !vr_eye;
+	const bool fsr_on = g->fsr_mode != AERON_TEMPORAL_OFF && hd_full && curr->hyperspace.phase == 0 && !vr_eye;
+	const bool ssao_on = g->ssao.ssao_quality != SSAO_OFF && g->ssao.ssao_intensity > 0.0f && hd_full && !vr_eye;
 
 	/* Build the previous-frame transform context for velocity. A valid
 	 * prev requires the same scene / battle / hyperspace phase —
@@ -901,6 +1037,7 @@ bool TieFlightRenderer_PrepareFrame(TieFlightRenderer* g, AeronCommandBuffer* cm
 	/* Snapshot → mesh instances (HD only; classic geometry draws via
 	 * the BEFORE_OPAQUE hook instead). */
 	TieFlightRenderer_SceneSubmit(g, curr, view_proj, fcam.camera.pos, &mb);
+	TieFlightPasses_AddVrCockpit(g);
 	TieFlightPointLights_Submit(g->scene, &point_frame, true);
 	if (!TieFlightPointLights_ConfigureScene(g->scene))
 		return false;
@@ -927,7 +1064,10 @@ bool TieFlightRenderer_RenderFrame(TieFlightRenderer* g, AeronCommandBuffer* cmd
 		return false;
 	const TieSnapshot* curr = g->frame.curr;
 	TIE_GPU_PUSH(cmd, "Flight scene (HDR)");
+	/* The second VR eye reuses the first eye's shadow cascades. */
+	AeronScene_SetDirectionalShadowReuse(g->scene, g->vr_eye && g->vr_eye_index > 0);
 	bool ok = AeronScene_Render(g->scene, cmd) != 0;
+	AeronScene_SetDirectionalShadowReuse(g->scene, 0);
 	TIE_GPU_POP(cmd);
 	if (!ok) {
 		g->frame.curr = NULL;

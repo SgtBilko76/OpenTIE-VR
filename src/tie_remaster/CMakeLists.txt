@@ -1,6 +1,7 @@
 # Modern renderer for the game application.
 add_library(tie_remaster STATIC
     remaster.c
+    vr_stereo.c
     flight/cockpit/renderer.c
     flight/cockpit/layout.c
     flight/cockpit/text.c

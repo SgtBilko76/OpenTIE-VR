@@ -147,7 +147,22 @@ _Static_assert(sizeof(AeronSceneMeshTable) == AERON_MESH_TABLE_STRIDE_VEC4 * siz
 
 /* ----- TieFlightRenderer state ----- */
 
+struct TieVrStereoEye;
+
 struct TieFlightRenderer {
+	/* VR stereo: the eye being rendered (NULL on the flat path). Eyes skip the
+	 * cockpit/HUD hook, temporal history, motion blur and SSAO; the second
+	 * eye reuses the first eye's shadow cascades. */
+	const struct TieVrStereoEye* vr_eye;
+	int vr_eye_index;
+	/* VR 3D cockpit (tie_remaster/vr_cockpit_model.inc), drawn seat-fixed in
+	 * each eye while vr_cockpit_on; body pose of the current eye frame. */
+	bool vr_cockpit_on;
+	bool vr_cockpit_failed;
+	AeronSceneMesh* vr_cockpit_mesh;
+	AeronFlightModel* vr_cockpit_model;
+	float vr_body_rows[9];
+	float vr_body_pos[3];
 	/* Scene renderer (aeron_scene). Owns the HDR color RT
 	 * (R11G11B10_UFLOAT), the sampled D32 depth RT, the octahedral
 	 * normal G-buffer, the SSAO / motion-blur post chains, and the pbr

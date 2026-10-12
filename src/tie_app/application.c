@@ -8,6 +8,7 @@
 #include "tie_app/application.h"
 #include "tie_app/frame_loop.h"
 #include "tie_app/window_icon.h"
+#include "tie_vr/tie_vr.h"
 
 #include "aeron/aeron.h"
 #include "aeron/compat/host.h"
@@ -26,6 +27,7 @@
 #include "tie_app/setup/installation.h"
 #include "tie_app/setup/setup.h"
 #include "tie_app/ui.h"
+#include "tie_app/vr_keyboard.h"
 #include "tie_remaster/remaster.h"
 #include "tie_runtime/flight_assets/service.h"
 #include "tie_runtime/hooks/axis_input.h"
@@ -137,6 +139,8 @@ static AeronDx5Rect TieApplication_Dx5PresentationRect(void* context, int surfac
 int TieApplication_Run(const TieLaunchOptions* launch) {
 	const AeronConfig config = TieApplication_AeronConfig(launch);
 
+	/* Quest: present through OpenXR instead of the Android window. */
+	TieVr_Install();
 	if (!Aeron_Init(&config)) {
 		fprintf(stderr, "[tie-aeron] Aeron_Init failed\n");
 		return 1;
@@ -414,6 +418,7 @@ int TieApplication_Run(const TieLaunchOptions* launch) {
 							  settings_error, sizeof settings_error))
 			Aeron_RequestFatalError("Settings Menu Error", settings_error);
 	}
+	TieVrKeyboard_Init(&app_ui);
 	if (startup_cmd) {
 		if (Aeron_FatalErrorRequested()) {
 			Aeron_CancelCommandBuffer(startup_cmd);

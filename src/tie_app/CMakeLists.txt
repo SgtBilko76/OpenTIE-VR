@@ -1,4 +1,4 @@
-add_executable(tie
+set(TIE_APP_SOURCES
     application.c
     application.h
     frame_loop.c
@@ -8,6 +8,7 @@ add_executable(tie
     main.c
     midi_resources.c
     ui.c
+    vr_keyboard.c
     config/app_config.c
     config/keyboard_config.c
     config/controller_config.c
@@ -23,7 +24,14 @@ add_executable(tie
     settings/controller_page.c
     setup/installation.c
     setup/installation_ui.c
-    setup/setup.c)
+    setup/setup.c
+    ${CMAKE_SOURCE_DIR}/src/tie_vr/tie_vr.c)
+if(ANDROID)
+    # Quest: SDLActivity loads the game as libmain.so and calls SDL_main().
+    add_library(tie SHARED ${TIE_APP_SOURCES})
+else()
+    add_executable(tie ${TIE_APP_SOURCES})
+endif()
 
 # Aeron resolves generated shaders and staged resources relative to the
 # executable. Keep the application beside those build-tree directories even
@@ -31,6 +39,11 @@ add_executable(tie
 set_target_properties(tie PROPERTIES
     OUTPUT_NAME "OpenTIE"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+if(ANDROID)
+    set_target_properties(tie PROPERTIES
+        OUTPUT_NAME "main"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+endif()
 
 if(TIE_ENABLE_DEBUG_UI)
     target_sources(tie PRIVATE
@@ -41,7 +54,8 @@ if(TIE_ENABLE_DEBUG_UI)
 endif()
 
 target_include_directories(tie PRIVATE
-    ${CMAKE_SOURCE_DIR}/src)
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/third_party/openxr/include)
 target_link_libraries(tie PRIVATE
     tie_core
     tie_remaster)

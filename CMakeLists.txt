@@ -57,7 +57,12 @@ pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
 
 # Top-level aliases for libimuse backend options.
-option(ENABLE_FLUIDSYNTH "Enable FluidSynth MIDI backend" ON)
+if(ANDROID)
+    # No FluidSynth for the Quest build; the default OPL3 synth is built in.
+    option(ENABLE_FLUIDSYNTH "Enable FluidSynth MIDI backend" OFF)
+else()
+    option(ENABLE_FLUIDSYNTH "Enable FluidSynth MIDI backend" ON)
+endif()
 set(IMUSE_ENABLE_FLUIDSYNTH ${ENABLE_FLUIDSYNTH})
 
 option(ENABLE_FM4_OPL3 "Enable FM4 Nuked-OPL3 MIDI backend" ON)

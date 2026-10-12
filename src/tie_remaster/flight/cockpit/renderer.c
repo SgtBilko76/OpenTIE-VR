@@ -25,6 +25,7 @@
 #include "tie_remaster/flight/cockpit/text.h"
 #include "tie_remaster/flight/hud_geometry.h"
 #include "tie_remaster/flight/mesh_draw.h"
+#include "tie_vr/tie_vr_cockpit_panels.h"
 #include "tie_remaster/flight/render_math.h"
 #include "tie_remaster/flight/renderer.h"
 #include "tie_remaster/gpu_debug.h"
@@ -178,6 +179,9 @@ struct TieCockpitRenderer {
 	int crt_mask_count;
 	uint8_t original_vga_palette[576];
 	bool original_vga_palette_loaded;
+	/* VR 3D cockpit: skip the static cockpit picture (frame, panel bezels);
+	 * the 3D model supplies them and only instruments/HUD are drawn. */
+	bool vr_instruments_only;
 	uint16_t original_font_width;
 	uint8_t original_micro_zero_advance;
 	float original_font_atlas_scale;
@@ -2924,8 +2928,10 @@ static bool TieCockpitRenderer_CockpitRecordLists(TieCockpitRenderer* cg, AeronC
 	 * TieFlightRenderer model backend: scene meshes use 1998 corner brackets,
 	 * false=1995 (hollow rect, fixed coord/48). */
 	const bool look_1998 = (cg->flight_gpu != NULL) && TieFlightRenderer_UsesSceneModels(cg->flight_gpu);
-	TIE_GPU_MARKER(cmd, "Flight target box");
-	TieCockpitRenderer_DrawMainTargetBox(cg, cmd, NULL, entry, rt_w, rt_h, snap, look_1998);
+	if (!cg->vr_instruments_only) {
+		TIE_GPU_MARKER(cmd, "Flight target box");
+		TieCockpitRenderer_DrawMainTargetBox(cg, cmd, NULL, entry, rt_w, rt_h, snap, look_1998);
+	}
 
 	/* Static cockpit chrome — base bitmap + damage cracks + subsystem
 	 * covers. These change only on view/craft switch, mirror toggle, or a
@@ -2948,6 +2954,21 @@ static bool TieCockpitRenderer_CockpitRecordLists(TieCockpitRenderer* cg, AeronC
 		TieCockpitRenderer_DrawCovers(cg, cmd, NULL, entry, coord_w, coord_h, snap);
 		TIE_GPU_MARKER(cmd, "Cockpit damage");
 		TieCockpitRenderer_DrawDamageCracks(cg, cmd, NULL, entry, coord_w, coord_h, snap);
+	}
+	if (cg->vr_instruments_only) {
+		/* VR 3D cockpit: the instrument panels keep the original bezels and
+		 * labels, but the window region (struts) is cleared - the 3D model
+		 * is the frame there. The target box then draws over the cleared
+		 * window, which the host shows world-aligned. */
+		const TieCockpitRendererDrawSpace* space = &cg->pending_space;
+		const float* r = TIE_VR_COCKPIT_HUD_RECT;
+		const float kx = space->scale_x * (float)coord_w / 640.0f;
+		const float ky = space->scale_y * (float)coord_h / 480.0f;
+		static const float clear_rgba[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		AeronDrawList_AddFill(cg->record_list, space->fit_x + r[0] * kx, space->fit_y + r[1] * ky,
+							  (r[2] - r[0]) * kx, (r[3] - r[1]) * ky, clear_rgba, AERON_BLIT2D_BLEND_NONE, NULL);
+		TIE_GPU_MARKER(cmd, "Flight target box");
+		TieCockpitRenderer_DrawMainTargetBox(cg, cmd, NULL, entry, rt_w, rt_h, snap, look_1998);
 	}
 	/* Per-frame clearwindow rects for dynamic-text areas the cockpit
 	 * base bitmap leaves with placeholder graphics. View-0 gated. */
@@ -3064,4 +3085,9 @@ void TieCockpitRenderer_RenderInPass(TieCockpitRenderer* cg, AeronCommandBuffer*
 	}
 
 	AeronDrawList_RenderIntoPass(cg->after_pip_list, cmd, pass, target);
+}
+
+void TieCockpitRenderer_SetVrInstrumentsOnly(TieCockpitRenderer* cg, bool on) {
+	if (cg)
+		cg->vr_instruments_only = on;
 }

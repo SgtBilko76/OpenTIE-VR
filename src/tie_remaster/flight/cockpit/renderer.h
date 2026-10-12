@@ -54,6 +54,9 @@ void TieCockpitRenderer_RenderInPass(TieCockpitRenderer* cg, struct AeronCommand
 									 struct AeronRenderPass* pass, struct AeronRenderTarget* target,
 									 const struct TieSnapshot* snap);
 
+/* VR 3D cockpit: draw instruments and HUD without the cockpit picture. */
+void TieCockpitRenderer_SetVrInstrumentsOnly(TieCockpitRenderer* cg, bool on);
+
 #ifdef __cplusplus
 }
 #endif

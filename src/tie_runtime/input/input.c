@@ -221,6 +221,10 @@ static int engine_cursor_valid;
 static int16_t engine_cursor_x, engine_cursor_y;
 static int manual_release;
 static int eat_mouse_buttons;
+/* Set by host overlays (Quest on-screen keyboard) that own the mouse. */
+static int overlay_mouse_blocked;
+
+void TieInput_SetOverlayMouseBlocked(bool blocked) { overlay_mouse_blocked = blocked ? 1 : 0; }
 static int system_cursor_visible = -1;
 /* DOS-order press edges retained until the engine samples them. */
 static int16_t pending_mouse_presses;
@@ -250,7 +254,7 @@ void TieInput_GetMousePosition(int16_t* buttons, int16_t* x, int16_t* y) {
 	const AeronInputSnapshot* in = Aeron_InputSnapshot();
 	int16_t btn = 0;
 
-	if (in && !eat_mouse_buttons && !mouse_flight_blocked) {
+	if (in && !eat_mouse_buttons && !mouse_flight_blocked && !overlay_mouse_blocked) {
 		/* input bridge order: bit 0 = left, bit 1 = right, bit 2 = middle. */
 		if (in->mouse.buttons & AERON_MOUSE_BUTTON_LEFT)
 			btn |= 1;
@@ -619,7 +623,7 @@ void TieInput_BeginFrame(int32_t delta_us) {
 	 * edges until Landru or the flight input path reads the button state. */
 	pending_mouse_presses &= (int16_t)~observed_mouse_presses;
 	observed_mouse_presses = 0;
-	if (eat_mouse_buttons || mouse_flight_blocked) {
+	if (eat_mouse_buttons || mouse_flight_blocked || overlay_mouse_blocked) {
 		/* The press that restored flight capture must not become a shot. */
 		pending_mouse_presses = 0;
 	} else if (in->has_focus) {

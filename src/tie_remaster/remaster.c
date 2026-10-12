@@ -1,4 +1,8 @@
 #include "tie_remaster/remaster.h"
+#include "tie_remaster/vr_stereo.h"
+
+#include "aeron/external_present.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -6,6 +10,7 @@
 #include "aeron/scene/blend_ramp.h"
 #include "aeron/scene/present.h"
 #include "tie_remaster/flight/cockpit/renderer.h"
+#include "tie_remaster/flight/render_math.h"
 #include "tie_remaster/flight/renderer.h"
 #include "tie_remaster/integration/snapshot_adapter.h"
 #include "tie_remaster/scene2d/cursor.h"
@@ -113,6 +118,15 @@ typedef struct TieRemasterFlight {
 	bool rendered;
 	bool force_render;
 	bool render_suspended;
+	/* VR stereo (Quest): per-eye tonemapped image, cockpit/HUD overlay with
+	 * its own RGBA cockpit renderer (the main one targets an alpha-less HDR
+	 * format), all at the presentation render size. */
+	TieCockpitRenderer* vr_cockpit;
+	AeronRenderTarget* vr_eye_target;
+	AeronRenderTarget* vr_overlay_target;
+	AeronDepthTarget* vr_overlay_depth;
+	int vr_width;
+	int vr_height;
 } TieRemasterFlight;
 
 typedef struct TieRemasterState {
@@ -397,6 +411,19 @@ static bool TieRemaster_InitFlight(AeronCommandBuffer* cmd, const char* remaster
 
 static void TieRemaster_ShutdownFlight(void) {
 	TieRemasterFlight* flight = &g_remaster.flight;
+	if (flight->vr_cockpit)
+		TieCockpitRenderer_Shutdown(flight->vr_cockpit);
+	if (flight->vr_eye_target)
+		Aeron_DestroyRenderTarget(flight->vr_eye_target);
+	if (flight->vr_overlay_target)
+		Aeron_DestroyRenderTarget(flight->vr_overlay_target);
+	if (flight->vr_overlay_depth)
+		Aeron_DestroyDepthTarget(flight->vr_overlay_depth);
+	flight->vr_cockpit = NULL;
+	flight->vr_eye_target = NULL;
+	flight->vr_overlay_target = NULL;
+	flight->vr_overlay_depth = NULL;
+	flight->vr_width = flight->vr_height = 0;
 	if (flight->cockpit)
 		TieCockpitRenderer_Shutdown(flight->cockpit);
 	if (flight->renderer)
@@ -785,6 +812,202 @@ static bool TieRemaster_RenderFlightTarget(const TieSnapshot* snapshot, int32_t 
 	if (!Aeron_SubmitCommandBuffer(cmd)) {
 		Aeron_RequestFatalRendererError("flight command-buffer submission");
 		return false;
+	}
+	return true;
+}
+
+static bool TieRemaster_EnsureVrTargets(AeronCommandBuffer* cmd, int width, int height) {
+	TieRemasterFlight* flight = &g_remaster.flight;
+	if (!flight->vr_cockpit) {
+		flight->vr_cockpit = TieCockpitRenderer_Init(cmd, g_remaster.assets,
+													 (uint32_t)AERON_TEXTURE_FORMAT_RGBA16_FLOAT,
+													 g_remaster.scene2d.text);
+		if (!flight->vr_cockpit)
+			return false;
+		TieCockpitRenderer_SetFlightRenderer(flight->vr_cockpit, flight->renderer);
+		Aeron_LogInfo("tie.vr", "stereo flight: overlay cockpit renderer ready");
+	}
+	if (flight->vr_width == width && flight->vr_height == height && flight->vr_eye_target)
+		return true;
+	if (flight->vr_eye_target)
+		Aeron_DestroyRenderTarget(flight->vr_eye_target);
+	if (flight->vr_overlay_target)
+		Aeron_DestroyRenderTarget(flight->vr_overlay_target);
+	if (flight->vr_overlay_depth)
+		Aeron_DestroyDepthTarget(flight->vr_overlay_depth);
+	flight->vr_eye_target = Aeron_CreateRenderTarget(&(AeronRenderTargetDesc) {
+		.width = width,
+		.height = height,
+		.format = TIE_FLIGHT_PRESENT_RT_FORMAT,
+		.sample_count = AERON_SAMPLE_COUNT_1,
+	});
+	flight->vr_overlay_target = Aeron_CreateRenderTarget(&(AeronRenderTargetDesc) {
+		.width = width,
+		.height = height,
+		.format = AERON_TEXTURE_FORMAT_RGBA16_FLOAT,
+		.sample_count = AERON_SAMPLE_COUNT_1,
+	});
+	flight->vr_overlay_depth = Aeron_CreateDepthTarget(&(AeronDepthTargetDesc) {
+		.width = width,
+		.height = height,
+		.format = AERON_TEXTURE_FORMAT_D32_FLOAT,
+		.sample_count = AERON_SAMPLE_COUNT_1,
+	});
+	flight->vr_width = width;
+	flight->vr_height = height;
+	Aeron_LogInfo("tie.vr", "stereo flight targets %dx%d", width, height);
+	return flight->vr_eye_target && flight->vr_overlay_target && flight->vr_overlay_depth;
+}
+
+/* Tangents of the flat presentation frame's edges as seen from the seat:
+ * the game camera's frustum over the modern (flight) rect, extended to the
+ * whole frame, so the host can place the cockpit/HUD overlay to line up with
+ * the stereo world. */
+static void TieRemaster_VrFrameTangents(const TieSnapshot* snapshot, int width, int height, float out[4]) {
+	const TiePresentationLayout* presentation = TiePresentation_Layout();
+	TieFlightCamera fcam;
+	TieRenderMath_BuildCamera(&fcam, &snapshot->camera, width, height);
+	const float th = tanf(fcam.h_half_rad);
+	const float tv = tanf(fcam.v_half_rad);
+	float left = th * (1.0f + fcam.proj_x_offset);
+	float right = th * (1.0f - fcam.proj_x_offset);
+	float up = tv * (1.0f - fcam.proj_y_offset);
+	float down = tv * (1.0f + fcam.proj_y_offset);
+	if (presentation && presentation->modern.width > 0 && presentation->modern.height > 0 &&
+		presentation->frame.width > 0 && presentation->frame.height > 0) {
+		const AeronRectI m = presentation->modern;
+		const AeronRectI f = presentation->frame;
+		const float kx = (left + right) / (float)m.width;
+		const float ky = (up + down) / (float)m.height;
+		left += (float)(m.x - f.x) * kx;
+		right += (float)((f.x + f.width) - (m.x + m.width)) * kx;
+		up += (float)(m.y - f.y) * ky;
+		down += (float)((f.y + f.height) - (m.y + m.height)) * ky;
+	}
+	out[0] = left;
+	out[1] = right;
+	out[2] = up;
+	out[3] = down;
+}
+
+/* Quest stereo flight: the 3D world once per head-tracked eye straight into
+ * the OpenXR eye images, then the cockpit/HUD alone (transparent elsewhere)
+ * into the flat presentation target, which the host shows as an overlay. */
+static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrStereoFrame* frame,
+									   int32_t delta_us, uint64_t host_time_us, bool paused) {
+	TieRemasterFlight* flight = &g_remaster.flight;
+	const TiePresentationLayout* presentation = TiePresentation_Layout();
+	if (!presentation || flight->render_generation != presentation->render_generation)
+		return false; /* let the flat path resize first */
+	const int width = flight->target_width;
+	const int height = flight->target_height;
+	AeronCommandBuffer* cmd = Aeron_AcquireCommandBuffer();
+	if (!cmd)
+		return false;
+	bool ok = TieRemaster_EnsureVrTargets(cmd, width, height);
+	/* 3D cockpit: the generated TIE Fighter model in the eyes, instruments
+	 * only in the overlay. Other craft keep the flat cockpit overlay. */
+	const bool cockpit3d = snapshot->cockpit.classic_w == 640 &&
+						   strncmp(snapshot->cockpit.view_name, "TIEFTR12", sizeof snapshot->cockpit.view_name) == 0;
+	TieFlightRenderer_SetVrCockpit(flight->renderer, cockpit3d);
+	if (flight->vr_cockpit)
+		TieCockpitRenderer_SetVrInstrumentsOnly(flight->vr_cockpit, cockpit3d);
+	for (int eye = 0; ok && eye < 2; ++eye) {
+		TieFlightRenderer_SetVrEye(flight->renderer, &frame->eyes[eye], eye);
+		ok = TieFlightRenderer_PrepareFrame(flight->renderer, cmd, TieSnapshot_Previous(), snapshot, delta_us,
+											host_time_us, paused);
+		if (ok && eye == 0) {
+			ok = TieCockpitRenderer_Prepare(flight->vr_cockpit, cmd, snapshot);
+		}
+		if (ok)
+			ok = TieFlightRenderer_RenderFrame(flight->renderer, cmd);
+		if (ok) {
+			AeronRenderPass* pass = Aeron_BeginRenderPass(&(AeronRenderPassDesc) {
+				.color_target = flight->vr_eye_target,
+				.clear_color = 1,
+				.clear_color_rgba = { 0.0f, 0.0f, 0.0f, 1.0f },
+				.command_buffer = cmd,
+			});
+			ok = pass != NULL;
+			if (pass) {
+				static const float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+				TieFlightRenderer_Present(flight->renderer, cmd, pass, tint);
+				Aeron_EndRenderPass(pass);
+			}
+		}
+		if (ok)
+			ok = Aeron_BlitTextureToExternal(cmd, Aeron_RenderTargetGetTexture(flight->vr_eye_target),
+											 frame->eyes[eye].target, frame->eyes[eye].target_width,
+											 frame->eyes[eye].target_height) != 0;
+	}
+	TieFlightRenderer_SetVrEye(flight->renderer, NULL, 0);
+
+	if (ok) {
+		AeronRenderPass* pass = Aeron_BeginRenderPass(&(AeronRenderPassDesc) {
+			.color_target = flight->vr_overlay_target,
+			.depth_target = flight->vr_overlay_depth,
+			.clear_color = 1,
+			.clear_color_rgba = { 0.0f, 0.0f, 0.0f, 0.0f },
+			.clear_depth = 1,
+			.clear_depth_value = 0.0f,
+			.command_buffer = cmd,
+		});
+		ok = pass != NULL;
+		if (pass) {
+			const AeronRectI full = { 0, 0, width, height };
+			Aeron_SetViewport(pass, &full);
+			Aeron_SetScissor(pass, &full);
+			TieCockpitRenderer_RenderInPass(flight->vr_cockpit, cmd, pass, flight->vr_overlay_target, snapshot);
+			Aeron_EndRenderPass(pass);
+		}
+	}
+	if (ok) {
+		AeronRenderPass* pass = Aeron_BeginRenderPass(&(AeronRenderPassDesc) {
+			.color_target = flight->present_target,
+			.clear_color = 1,
+			.clear_color_rgba = { 0.0f, 0.0f, 0.0f, 0.0f },
+			.command_buffer = cmd,
+		});
+		ok = pass != NULL;
+		if (pass) {
+			TieFlightRenderer_PresentOverlay(flight->renderer, cmd, pass,
+											 Aeron_RenderTargetGetTexture(flight->vr_overlay_target), width, height);
+			Aeron_EndRenderPass(pass);
+		}
+	}
+	if (!ok) {
+		Aeron_CancelCommandBuffer(cmd);
+		Aeron_LogWarn("tie.vr", "stereo flight frame failed; using the flat view");
+		return false;
+	}
+	if (!Aeron_SubmitCommandBuffer(cmd)) {
+		Aeron_RequestFatalRendererError("VR flight command-buffer submission");
+		return false;
+	}
+	float tangents[4];
+	TieRemaster_VrFrameTangents(snapshot, width, height, tangents);
+	TieRemasterVr_SetRendered(1, tangents);
+	if (cockpit3d && presentation->modern.width > 0 && presentation->modern.height > 0) {
+		/* Classic 640x480 cockpit pixels -> flat frame pixels. */
+		const float map[4] = {
+			(float)(presentation->modern.x - presentation->frame.x),
+			(float)(presentation->modern.y - presentation->frame.y),
+			(float)presentation->modern.width / 640.0f,
+			(float)presentation->modern.height / 480.0f,
+		};
+		const float frame_size[2] = { (float)presentation->frame.width, (float)presentation->frame.height };
+		TieRemasterVr_SetCockpit3d(1, map, frame_size);
+	}
+	static int logged = -1;
+	if (logged != (int)cockpit3d) {
+		logged = (int)cockpit3d;
+		Aeron_LogInfo("tie.vr", "cockpit view %.10s: %s", snapshot->cockpit.view_name,
+					  cockpit3d ? "3D cockpit" : "flat cockpit overlay");
+		Aeron_LogInfo("tie.vr", "stereo flight active: frame %d,%d %dx%d modern %d,%d %dx%d, tangents L%.3f R%.3f U%.3f D%.3f",
+					  presentation->frame.x, presentation->frame.y, presentation->frame.width,
+					  presentation->frame.height, presentation->modern.x, presentation->modern.y,
+					  presentation->modern.width, presentation->modern.height, (double)tangents[0],
+					  (double)tangents[1], (double)tangents[2], (double)tangents[3]);
 	}
 	return true;
 }
@@ -1182,7 +1405,22 @@ bool TieRemaster_Frame(const TieSnapshot* snapshot, int32_t delta_us, bool pause
 	} else if (!flight_is_active) {
 		flight->render_suspended = false;
 	}
-	if (compose_flight && TieRemaster_FlightRenderDue(snapshot)) {
+	/* Quest: head-tracked stereo whenever the HD cockpit view is on screen
+	 * (the map and other full-screen flight pages stay on the flat screen). */
+	const TieVrStereoFrame* vr_frame = TieRemasterVr_PublishedFrame();
+	bool vr_stereo = compose_flight && vr_frame && g_remaster.view_mode == TIE_REMASTER_VIEW_HD &&
+					 g_remaster.blend.alpha >= 1.0f && TieRemaster_FlightCameraValid(snapshot) &&
+					 snapshot->flight_screen == TIE_FLIGHT_SCREEN_NORMAL;
+	TieRemasterVr_SetRendered(0, NULL);
+	if (vr_stereo) {
+		vr_stereo = TieRemaster_RenderFlightVr(snapshot, vr_frame, delta_us, g_remaster.host_elapsed_us, paused);
+		if (vr_stereo) {
+			TieRemaster_FlightRenderCommitted(snapshot);
+			/* Leaving stereo must redraw the flat frame (it holds the HUD only). */
+			flight->force_render = true;
+		}
+	}
+	if (!vr_stereo && compose_flight && TieRemaster_FlightRenderDue(snapshot)) {
 		compose_flight =
 			TieRemaster_RenderFlightTarget(snapshot, delta_us, g_remaster.host_elapsed_us, paused);
 		if (compose_flight)
@@ -1194,7 +1432,7 @@ bool TieRemaster_Frame(const TieSnapshot* snapshot, int32_t delta_us, bool pause
 		TieRemaster_ResolveCursorLayerPlacement(snapshot, scene2d_is_active, alpha, &cursor_placement);
 	const TiePresentationLayout* presentation = TiePresentation_Layout();
 	const bool direct_flight =
-		compose_flight && !scene2d_is_active && !cursor_layer_active && presentation &&
+		compose_flight && !vr_stereo && !scene2d_is_active && !cursor_layer_active && presentation &&
 		g_remaster.view_mode == TIE_REMASTER_VIEW_HD && g_remaster.blend.alpha >= 1.0f &&
 		g_remaster.flight.render_generation == presentation->render_generation &&
 		Aeron_CanRenderDirectToSwapchain(presentation->render_width, presentation->render_height);
