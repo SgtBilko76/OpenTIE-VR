@@ -94,12 +94,13 @@ REPLACEMENTS = [
      "\tint                   button_a, button_b, button_x, button_y, button_menu;\n"
      "\t/* Controller text entry */\n"
      "\tint                   text_mode;\n"
-     "\tint                   text_a_was_down, text_b_was_down, text_x_was_down, text_y_was_down;\n"
+     "\tint                   text_mode_was_on;\n"
+     "\tint                   text_a_was_down, text_b_was_down, text_y_was_down;\n"
      "\tint                   dial_index, dial_pending, dial_dir_x, dial_dir_y;\n"
      "\tfloat                 dial_repeat_s;\n"),
     ("type keys: A = Enter, B = Escape, Y = Space, menu = Escape,\n",
-     "type keys: A = Enter, B = Escape, Y = Space, menu = Escape, X = text entry\n"
-     " * mode (vr_update_text_entry),\n"),
+     "type keys: A = Enter, B = Escape, Y = Space, menu = Escape (a laser\n"
+     " * click on a text field opens the keyboard, vr_update_text_entry),\n"),
     # Left stick arrows: one tap per deliberate push (holding a key made the
     # game auto-repeat, so menus kept moving), re-armed only after the stick
     # returns near the centre; off while the on-screen keyboard is open.

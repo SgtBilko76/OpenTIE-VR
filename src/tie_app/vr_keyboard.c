@@ -10,6 +10,7 @@
 #include "aeron/scene/ui.h"
 #include "tie_app/settings/settings.h"
 #include "tie_runtime/input/input.h"
+#include "tie_runtime/input/text_field.h"
 #include "tie_vr/tie_vr.h"
 
 enum {
@@ -74,7 +75,23 @@ static void TieVrKeyboard_Row(const char* keys) {
 }
 
 void TieVrKeyboard_Frame(const AeronInputSnapshot* input, float dt_seconds) {
-	const bool visible = g_ui && input && TieVr_TextEntryActive() && !TieSettings_Open();
+	bool visible = g_ui && input && TieVr_TextEntryActive() && !TieSettings_Open();
+
+	/* No text field on screen any more (pilot screen left): close. */
+	if (visible && !TieTextField_Visible()) {
+		Aeron_LogInfo("tie.vr", "keyboard closed (no text field on screen)");
+		TieVr_SetTextEntryActive(0);
+		visible = false;
+	}
+	/* Laser click into a text field (pilot name, password): open. The
+	 * keyboard appears from the next frame, so this click stays the
+	 * game's (it selects the field as before). */
+	if (!visible && g_ui && input && !TieSettings_Open() && !TieVr_TextEntryActive() &&
+		(input->mouse.pressed_buttons & AERON_MOUSE_BUTTON_LEFT) && TieTextField_UnderMouse()) {
+		TieVr_SetTextEntryActive(1);
+		if (TieVr_TextEntryActive())
+			Aeron_LogInfo("tie.vr", "keyboard opened (text field clicked)");
+	}
 
 	if (!visible) {
 		if (g_block_frames > 0)
@@ -87,7 +104,15 @@ void TieVrKeyboard_Frame(const AeronInputSnapshot* input, float dt_seconds) {
 
 	TieInput_SetOverlayMouseBlocked(true);
 
-	AeronUi_BeginFrame(g_ui, &(AeronUiFrameDesc) { .input = input, .dt_seconds = dt_seconds });
+	/* Laser only: in menus the VR pad keeps reporting the throttle lever on
+	 * its left stick, which the UI would read as endless focus navigation
+	 * (the highlight kept walking across the keys). */
+	static AeronInputSnapshot keyboard_input;
+	keyboard_input = *input;
+	for (int i = 0; i < AERON_CONTROLLER_MAX; ++i)
+		keyboard_input.controllers[i].connected = 0;
+
+	AeronUi_BeginFrame(g_ui, &(AeronUiFrameDesc) { .input = &keyboard_input, .dt_seconds = dt_seconds });
 	/* Top of the screen, horizontally centred: text fields (the pilot name
 	 * on the registration screen) sit in the lower half and stay visible. */
 	AeronUiWindowDesc window = { .width_ref = 960.0f, .y_ref = 12.0f, .flags = AERON_UI_WINDOW_NO_TITLE };

@@ -46,7 +46,7 @@ Menus (and in-flight screens such as the map and options):
 | A | Enter |
 | B | Escape (Delete while the keyboard is open) |
 | Y | Space |
-| X | Open/close the on-screen keyboard (pilot names) |
+| Laser + trigger on a text field | Open the on-screen keyboard (pilot name) |
 | Left Menu, short press | Escape |
 
 Flight (the Touch controllers act as one gamepad; every button can be

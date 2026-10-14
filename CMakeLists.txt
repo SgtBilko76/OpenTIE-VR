@@ -446,6 +446,8 @@ set(TIE_RUNTIME_SOURCES
     src/tie_runtime/input/input.h
     src/tie_runtime/input/mouse_flight.c
     src/tie_runtime/input/mouse_flight.h
+    src/tie_runtime/input/text_field.c
+    src/tie_runtime/input/text_field.h
     src/tie_runtime/input/controller_mapping.c
     src/tie_runtime/input/controller_mapping.h
     src/tie_runtime/input/transform.c

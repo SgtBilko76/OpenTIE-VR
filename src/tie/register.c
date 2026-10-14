@@ -17,6 +17,7 @@
 #include "tie_runtime/display/classic_framebuffer.h"
 #include "tie_runtime/flight_assets/model_types.h"
 #include "tie_runtime/input/input.h"
+#include "tie_runtime/input/text_field.h"
 #include "tie_runtime/presentation/pilot_name.h"
 #include "tie_runtime/runtime/exports.h"
 #include "tie_runtime/runtime/profile.h"
@@ -1091,6 +1092,9 @@ static void register_idraw_Pilot_Name(Input* input, Rect* frame, Rect* clip, int
 	int16_t caret_y;
 
 	TiePilotName_CopyForDisplay(display_name, sizeof(display_name), btn->name);
+#ifdef TIE_MODERN
+	TieTextField_Report(frame->left, frame->top, frame->right, frame->bottom);
+#endif
 	saved_font = xfont_Get_Font();
 	xfont_Set_Font(TIE_FRONTEND_EDITION(0, 3));
 	str_width = xfont_Get_String_Width(display_name);
@@ -1894,6 +1898,9 @@ static void register_idraw_Reg_String_Button(Input* input, Rect* frame, Rect* cl
 	int16_t saved_font = xfont_Get_Font();
 	int16_t str_width;
 
+#ifdef TIE_MODERN
+	TieTextField_Report(frame->left, frame->top, frame->right, frame->bottom);
+#endif
 	xfont_Set_Font(TIE_FRONTEND_EDITION(0, 3));
 	str_width = xfont_Get_String_Width(btn->name);
 	xfont_Set_Font(saved_font);

@@ -174,7 +174,8 @@ static struct {
 	int                   arrow_armed;
 	float                 menu_held_s;
 	int                   menu_long_done, menu_tap_frames;
-	int                   text_a_was_down, text_b_was_down, text_x_was_down, text_y_was_down;
+	int                   text_mode_was_on;
+	int                   text_a_was_down, text_b_was_down, text_y_was_down;
 	int                   dial_index, dial_pending, dial_dir_x, dial_dir_y;
 	float                 dial_repeat_s;
 	/* Pointer */
@@ -988,10 +989,10 @@ static void vr_update_gamepad(int in_flight, float dt) {
 /* Controller text entry                                                    */
 /*                                                                          */
 /* Horizon OS refuses to open the system keyboard while an immersive app is */
-/* running, so X (menus only) toggles text mode, which shows the app's own  */
-/* on-screen keyboard (src/tie_app/vr_keyboard.c, laser + trigger). In text */
-/* mode B deletes, Y types a space and A confirms with Enter. The right     */
-/* stick is deliberately not used for letters (too twitchy).                */
+/* running, so clicking a text field with the laser turns on text mode,     */
+/* which shows the app's own on-screen keyboard (src/tie_app/vr_keyboard.c, */
+/* laser + trigger). In text mode B deletes, Y types a space and A confirms */
+/* with Enter. The right stick is not used for letters (too twitchy).       */
 /* (Inserted into tie_vr.c by tools/quest/gen_tie_vr.py.)                   */
 
 /* Typed characters reach the game as SDL text events (the string must stay
@@ -1025,12 +1026,10 @@ static void vr_text_pulse(void) {
 
 static void vr_update_text_entry(int menu, float dt) {
 	(void)dt;
-	const int x_pressed = g_vr.button_x && !g_vr.text_x_was_down;
 	const int a_pressed = g_vr.button_a && !g_vr.text_a_was_down;
 	const int b_pressed = g_vr.button_b && !g_vr.text_b_was_down;
 	const int y_pressed = g_vr.button_y && !g_vr.text_y_was_down;
 
-	g_vr.text_x_was_down = g_vr.button_x;
 	g_vr.text_a_was_down = g_vr.button_a;
 	g_vr.text_b_was_down = g_vr.button_b;
 	g_vr.text_y_was_down = g_vr.button_y;
@@ -1042,12 +1041,12 @@ static void vr_update_text_entry(int menu, float dt) {
 		g_vr.text_mode = 0;
 		return;
 	}
-	if (x_pressed) {
-		g_vr.text_mode    = !g_vr.text_mode;
-		g_vr.dial_pending = 0;
+	if (g_vr.text_mode && !g_vr.text_mode_was_on) {
+		/* Opened by a text field click (TieVr_SetTextEntryActive). */
 		vr_text_pulse();
-		Aeron_LogInfo(VR_LOG, "text entry %s", g_vr.text_mode ? "on" : "off");
+		Aeron_LogInfo(VR_LOG, "text entry on");
 	}
+	g_vr.text_mode_was_on = g_vr.text_mode;
 	if (!g_vr.text_mode) {
 		return;
 	}
@@ -1091,8 +1090,8 @@ static void vr_update_menu_arrows(int enabled, float lx, float ly) {
 
 /* Menus (concourse, briefing, options, and in a mission the hangar and the
  * Escape options screen) have no gamepad navigation, so there the buttons
- * type keys: A = Enter, B = Escape, Y = Space, menu = Escape, X = text entry
- * mode (vr_update_text_entry),
+ * type keys: A = Enter, B = Escape, Y = Space, menu = Escape (a laser
+ * click on a text field opens the keyboard, vr_update_text_entry),
  * left stick = arrows. While
  * flying nothing is typed; see vr_update_gamepad. */
 static void vr_update_menu_keys(int in_flight) {
