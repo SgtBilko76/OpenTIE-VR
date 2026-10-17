@@ -254,6 +254,25 @@ static void TieLandruAdapter_HostJoystickRead(void* userdata, int port, int16_t*
 	if (buttons)
 		*buttons = 0;
 	TieInput_ReadJoystick(port, axes, axis_count, buttons);
+#ifdef __ANDROID__
+	/* Quest VR: outside flight the controller laser is the only pointer.
+	 * Landru's menu cursor also follows the joystick axes, which then fight
+	 * the laser's absolute position every frame (cursor drifts and snaps
+	 * back). Flight reads the same callback, so only menus drop the axes;
+	 * buttons are kept. */
+	{
+		const TieSnapshot* snapshot = TieSnapshot_Current();
+		if (axes && axis_count > 0 && (!snapshot || snapshot->scene_kind != TIE_SCENE_FLIGHT)) {
+			static int logged;
+			if (!logged && (axes[0] || (axis_count > 1 && axes[1]))) {
+				logged = 1;
+				Aeron_LogInfo("tie.vr", "menu cursor: ignoring joystick axes (%d, %d); the laser owns the cursor",
+							  axes[0], axis_count > 1 ? axes[1] : 0);
+			}
+			memset(axes, 0, (size_t)axis_count * sizeof *axes);
+		}
+	}
+#endif
 }
 
 static void TieLandruAdapter_HostPaletteSet(void* userdata, const uint8_t* rgb, int start, int count) {
