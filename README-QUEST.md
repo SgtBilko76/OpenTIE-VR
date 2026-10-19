@@ -21,12 +21,11 @@ Edition"). The APK contains no game data.
        adb push ".../STAR WARS Tie Fighter/collectors_cd/." /sdcard/OpenTIE/TIE95/
        adb push ".../STAR WARS Tie Fighter/remastered/." /sdcard/OpenTIE/TIE98/
 
-3. Optional, for the X-Wing Alliance 3D cockpits: if you own Star Wars:
-   X-Wing Alliance, copy its game folder to `/sdcard/OpenXWA` (the same
-   folder OpenXWA VR uses), or just copy `FLIGHTMODELS/TIECOCKPIT.OPT` and
-   `FLIGHTMODELS/TIEBOMBERCOCKPIT.OPT` to `/sdcard/OpenTIE/`. Without them
-   the TIE Fighter gets a built-in 3D cockpit and the other craft their flat
-   cockpit picture.
+3. Optional, for the TIE Defender and Missile Boat 3D cockpits: if you own
+   Star Wars: X-Wing Alliance, copy its game folder to `/sdcard/OpenXWA`
+   (the same folder OpenXWA VR uses), or just copy
+   `FLIGHTMODELS/TIECOCKPIT.OPT` to `/sdcard/OpenTIE/`. The TIE Fighter,
+   Advanced, Interceptor, Bomber and Gunboat cockpits are included.
 4. Start "OpenTIE VR" from Unknown Sources. On first start, allow
    "access to all files" when Android asks (or run
    `adb shell appops set --uid com.bilko.opentievr MANAGE_EXTERNAL_STORAGE allow`).
@@ -74,9 +73,11 @@ remapped in Settings > Controller):
 ## Known limitations (beta)
 
 - Quest 3 tested only.
-- 3D cockpits come from your own X-Wing Alliance copy (see Install). XWA
-  has no Gunboat or Missile Boat cockpit, so those use the TIE ball cockpit,
-  as in X-Wing Alliance.
+- 3D cockpits for the TIE Fighter, Advanced, Interceptor, Bomber and
+  Gunboat come from X-Wing Revival (included); their small built-in screens
+  are dark, the original instruments are mounted around you instead. The
+  TIE Defender and Missile Boat use X-Wing Alliance's TIE cockpit from your
+  own copy (see Install).
 - Motion blur, temporal upscaling and ambient occlusion are off in stereo.
 - Signed with a debug key.
 
@@ -94,6 +95,15 @@ CMake, Ninja, Python 3.
 VR code: `src/tie_vr/` (OpenXR session, input, layers; `tie_vr.c` is
 generated from OpenXWA-VR's `xwa_vr.c` by `tools/quest/gen_tie_vr.py`),
 `src/tie_remaster/vr_stereo.*` and `flight/passes.c` (per-eye rendering),
-`tools/quest/gen_vr_cockpit.py` (3D cockpit model), `src/tie_app/vr_keyboard.*`
+`tools/quest/gen_vr_cockpit.py` (3D cockpit model),
+`tools/quest/gen_revival_cockpits.py` (X-Wing Revival cockpits, converted
+at build time from Revival's free game data; set `XW_REVIVAL_DATA` to its
+`gamedata` folder), `src/tie_app/vr_keyboard.*`
 (on-screen keyboard) and the `quest-vr-tie` branch of the
 [Aeron engine fork](https://github.com/SgtBilko76/Aeron/tree/quest-vr-tie).
+
+## Credits
+
+3D cockpit models from [X-Wing Revival](https://www.raptor007.com/xwing/)
+by Raptor007 and its contributors (originally from the X-Wing Alliance
+Upgrade project).
