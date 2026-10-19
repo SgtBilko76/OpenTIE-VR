@@ -894,6 +894,25 @@ static void TieRemaster_VrFrameTangents(const TieSnapshot* snapshot, int width, 
 /* Quest stereo flight: the 3D world once per head-tracked eye straight into
  * the OpenXR eye images, then the cockpit/HUD alone (transparent elsewhere)
  * into the flat presentation target, which the host shows as an overlay. */
+/* X-Wing Revival 3D cockpit for a cockpit view (CP640 LFD name), or NULL.
+ * Revival flies the TIE Advanced with the TIE Fighter cockpit, too. */
+static const char* TieRemaster_RevivalCockpit(const char* view) {
+	static const struct {
+		const char* view;
+		const char* model;
+	} map[] = {
+		{ "TIEFTR", "vr_cockpits/tiefighter.glb" },
+		{ "TIEADV", "vr_cockpits/tiefighter.glb" },
+		{ "TIEINT", "vr_cockpits/tieinterceptor.glb" },
+		{ "TIEBMB", "vr_cockpits/tiebomber.glb" },
+		{ "GUNBT", "vr_cockpits/gunboat.glb" },
+	};
+	for (size_t i = 0; view && i < sizeof map / sizeof map[0]; ++i)
+		if (strncmp(view, map[i].view, strlen(map[i].view)) == 0)
+			return map[i].model;
+	return NULL;
+}
+
 static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrStereoFrame* frame,
 									   int32_t delta_us, uint64_t host_time_us, bool paused) {
 	TieRemasterFlight* flight = &g_remaster.flight;
@@ -912,7 +931,8 @@ static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrS
 	 * its flat cockpit overlay. */
 	const TieVrCockpitView* vr_view =
 		snapshot->cockpit.classic_w == 640 ? TieVrCockpit_FindView(snapshot->cockpit.view_name) : NULL;
-	const bool cockpit3d = TieFlightRenderer_SetVrCockpit(flight->renderer, cmd, vr_view ? vr_view->xwa_model : NULL,
+	const char* revival = snapshot->cockpit.classic_w == 640 ? TieRemaster_RevivalCockpit(snapshot->cockpit.view_name) : NULL;
+	const bool cockpit3d = TieFlightRenderer_SetVrCockpit(flight->renderer, cmd, revival, vr_view ? vr_view->xwa_model : NULL,
 														  vr_view && vr_view->has_builtin);
 	if (flight->vr_cockpit)
 		TieCockpitRenderer_SetVrInstrumentsOnly(flight->vr_cockpit, cockpit3d);

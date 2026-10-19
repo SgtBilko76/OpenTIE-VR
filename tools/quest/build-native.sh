@@ -55,6 +55,22 @@ rm -rf "$RUNTIME/resources" "$RUNTIME/shaders"
 cp -a "$BUILD/resources" "$RUNTIME/resources"
 # Quest Touch controller defaults (desktop keeps the upstream gamepad layout).
 python3 "$ROOT/tools/quest/quest_config.py" "$RUNTIME/resources/config.yaml"
+# VR 3D cockpits from X-Wing Revival (free game; converted once by
+# tools/quest/gen_revival_cockpits.py, needs the aeron_gltf_cook host tool).
+REVIVAL_DATA="${XW_REVIVAL_DATA:-$HOME/Projekte/X-Wing-Revival-VR/build-full-data/assets/gamedata}"
+COCKPITS="$ROOT/build/vr_cockpits"
+if [[ ! -f "$COCKPITS/tiefighter.glb" ]]; then
+    COOK="$ROOT/build/tools/aeron_gltf_cook"
+    if [[ ! -x "$COOK" ]]; then
+        cmake -S "$ROOT" -B "$ROOT/build/tools" -G Ninja -DCMAKE_BUILD_TYPE=Release -DTIE_BUILD_TOOLS=ON \
+            -DAERON_SHADERCROSS_EXECUTABLE="$XWA_TOOLS/bin/shadercross"
+        cmake --build "$ROOT/build/tools" --target aeron_gltf_cook --parallel "$(nproc)"
+    fi
+    python3 "$ROOT/tools/quest/gen_revival_cockpits.py" "$COOK" "$REVIVAL_DATA" "$COCKPITS" \
+        tiefighter tieinterceptor tiebomber gunboat
+fi
+mkdir -p "$RUNTIME/resources/vr_cockpits"
+cp "$COCKPITS"/*.glb "$RUNTIME/resources/vr_cockpits/"
 mkdir -p "$RUNTIME/shaders"
 cp "$BUILD"/shaders/*.spv "$RUNTIME/shaders/"
 ls -la "$JNI"

@@ -159,13 +159,13 @@ struct TieFlightRenderer {
 	 * TIE Fighter cockpit (tie_remaster/vr_cockpit_model.inc), the others
 	 * X-Wing Alliance cockpit OPTs read from the player's XWA data. */
 	struct {
-		char key[32];
+		char key[48];
 		bool tried;
 		bool is_xwa;
 		AeronFlightModel* model;
 		AeronSceneMesh* mesh;
 		float eye[3]; /* pilot eye in model space (metres) */
-	} vr_cockpits[4];
+	} vr_cockpits[8];
 	int vr_cockpit_slot; /* -1 = none this frame */
 	float vr_body_rows[9];
 	float vr_body_pos[3];

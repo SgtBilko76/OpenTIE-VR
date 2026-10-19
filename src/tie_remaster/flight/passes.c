@@ -19,6 +19,7 @@
 
 #include "aeron/aeron.h"
 #include "aeron/asset/opt_model.h"
+#include "aeron/vfs.h"
 #include "aeron/log.h"
 #include "aeron/scene/world.h"
 
@@ -251,6 +252,23 @@ static bool TieFlightPasses_LoadXwaCockpit(const char* file_name, AeronFlightMod
 
 /* Finds (loading on first use) the cockpit slot for `key`: an XWA OPT file
  * name, or "" for the generated cockpit. Returns -1 when unavailable. */
+/* X-Wing Revival cockpit (resources/vr_cockpits/<craft>.glb, converted by
+ * tools/quest/gen_revival_cockpits.py): body eye axes, metres, eye at the
+ * origin, like the generated cockpit. */
+static bool TieFlightPasses_LoadRevivalCockpit(const char* path, AeronFlightModel* model) {
+	uint8_t* data = NULL;
+	size_t size = 0;
+	if (!AeronVfs_ReadAll(Aeron_GetVfs(), AERON_VFS_ROOT_RESOURCE, path, 0, &data, &size)) {
+		Aeron_LogInfo("tie.vr", "3D cockpit %s not found", path);
+		return false;
+	}
+	const bool built = Aeron_FlightModelBuildMemory(data, size, path, model);
+	free(data);
+	if (built)
+		Aeron_LogInfo("tie.vr", "3D cockpit: X-Wing Revival model %s", path);
+	return built;
+}
+
 static int TieFlightPasses_VrCockpitSlot(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* key) {
 	const int count = (int)(sizeof g->vr_cockpits / sizeof g->vr_cockpits[0]);
 	int slot = -1;
@@ -267,10 +285,12 @@ static int TieFlightPasses_VrCockpitSlot(TieFlightRenderer* g, AeronCommandBuffe
 	AeronFlightModel* model = calloc(1, sizeof *model);
 	if (!model)
 		return -1;
-	const bool xwa = key[0] != '\0';
-	const bool loaded = xwa ? TieFlightPasses_LoadXwaCockpit(key, model)
-							: Aeron_FlightModelBuildMemory(tie_vr_cockpit_glb, tie_vr_cockpit_glb_size,
-														   "tie_vr_cockpit", model);
+	const bool revival = strncmp(key, "vr_cockpits/", 12) == 0;
+	const bool xwa = key[0] != '\0' && !revival;
+	const bool loaded = revival ? TieFlightPasses_LoadRevivalCockpit(key, model)
+						: xwa   ? TieFlightPasses_LoadXwaCockpit(key, model)
+								: Aeron_FlightModelBuildMemory(tie_vr_cockpit_glb, tie_vr_cockpit_glb_size,
+															   "tie_vr_cockpit", model);
 	if (!loaded) {
 		free(model);
 		return -1;
@@ -287,7 +307,7 @@ static int TieFlightPasses_VrCockpitSlot(TieFlightRenderer* g, AeronCommandBuffe
 		}
 	}
 	AeronSceneMeshCreateStatus status = AERON_SCENE_MESH_CREATE_SUCCESS;
-	AeronSceneMesh* mesh = AeronScene_MeshCreate(cmd, model, xwa ? key : "tie_vr_cockpit", &status);
+	AeronSceneMesh* mesh = AeronScene_MeshCreate(cmd, model, key[0] ? key : "tie_vr_cockpit", &status);
 	if (!mesh) {
 		Aeron_LogWarn("tie.vr", "3D cockpit mesh creation failed (%d)", (int)status);
 		Aeron_FlightModelFree(model);
@@ -305,18 +325,20 @@ static int TieFlightPasses_VrCockpitSlot(TieFlightRenderer* g, AeronCommandBuffe
 	g->vr_cockpits[slot].is_xwa = xwa;
 	g->vr_cockpits[slot].model = model;
 	g->vr_cockpits[slot].mesh = mesh;
-	Aeron_LogInfo("tie.vr", "3D cockpit %s ready: %u triangles", xwa ? key : "(built-in)", mesh->index_count / 3u);
+	Aeron_LogInfo("tie.vr", "3D cockpit %s ready: %u triangles", key[0] ? key : "(built-in)", mesh->index_count / 3u);
 	return slot;
 }
 
-bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* xwa_model,
-									bool builtin_ok) {
+bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* revival_model,
+									const char* xwa_model, bool builtin_ok) {
 	if (!g)
 		return false;
 	g->vr_cockpit_slot = -1;
 	if (!cmd)
 		return false;
-	if (xwa_model && xwa_model[0])
+	if (revival_model && revival_model[0])
+		g->vr_cockpit_slot = TieFlightPasses_VrCockpitSlot(g, cmd, revival_model);
+	if (g->vr_cockpit_slot < 0 && xwa_model && xwa_model[0])
 		g->vr_cockpit_slot = TieFlightPasses_VrCockpitSlot(g, cmd, xwa_model);
 	if (g->vr_cockpit_slot < 0 && builtin_ok)
 		g->vr_cockpit_slot = TieFlightPasses_VrCockpitSlot(g, cmd, "");

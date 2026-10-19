@@ -92,8 +92,10 @@ void TieFlightRenderer_SetVrEye(TieFlightRenderer* g, const struct TieVrStereoEy
  * has it, else the generated cockpit when `builtin_ok`. NULL/false = none.
  * Loads on first use (records uploads into `cmd`). Returns true when a 3D
  * cockpit will be drawn. */
-bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* xwa_model,
-									bool builtin_ok);
+/* `revival_model` (resources/vr_cockpits/<craft>.glb from X-Wing Revival)
+ * is tried first, then `xwa_model`. */
+bool TieFlightRenderer_SetVrCockpit(TieFlightRenderer* g, AeronCommandBuffer* cmd, const char* revival_model,
+									const char* xwa_model, bool builtin_ok);
 /* Tonemaps a transparent HDR overlay (VR cockpit/HUD) into `pass`, keeping
  * its coverage as premultiplied alpha. */
 void TieFlightRenderer_PresentOverlay(TieFlightRenderer* g, AeronCommandBuffer* cmd, AeronRenderPass* pass,
