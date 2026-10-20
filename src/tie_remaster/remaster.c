@@ -931,7 +931,10 @@ static bool TieRemaster_RenderFlightVr(const TieSnapshot* snapshot, const TieVrS
 	 * its flat cockpit overlay. */
 	const TieVrCockpitView* vr_view =
 		snapshot->cockpit.classic_w == 640 ? TieVrCockpit_FindView(snapshot->cockpit.view_name) : NULL;
-	const char* revival = snapshot->cockpit.classic_w == 640 ? TieRemaster_RevivalCockpit(snapshot->cockpit.view_name) : NULL;
+	/* Revival matches by craft prefix, so it also matches the other cockpit
+	 * views (high-angle view = right grip); those have no panel layout and
+	 * keep the flat overlay. */
+	const char* revival = vr_view ? TieRemaster_RevivalCockpit(snapshot->cockpit.view_name) : NULL;
 	const bool cockpit3d = TieFlightRenderer_SetVrCockpit(flight->renderer, cmd, revival, vr_view ? vr_view->xwa_model : NULL,
 														  vr_view && vr_view->has_builtin);
 	if (flight->vr_cockpit)
