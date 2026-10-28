@@ -32,6 +32,8 @@ Edition"). The APK contains no game data.
 
 ## Controls
 
+![OpenTIE VR controller mapping](docs/controls.webp)
+
 Recenter: hold the Meta button on the right controller, or hold the left
 Menu button for one second.
 
