@@ -39,18 +39,19 @@ Edition"). The APK contains no game data.
 Recenter: hold the Meta button on the right controller, or hold the left
 Menu button for one second.
 
-Menus (and in-flight screens such as the map and options):
+Menus and in-flight screens such as the map (left controller only; the
+right controller does nothing in menus):
 
-| Input | Action |
-|---|---|
-| Laser (either controller) + trigger | Click |
-| Right grip | Right-click |
-| Left stick | Arrow keys, one step per push |
-| A | Enter |
-| B | Escape (Delete while the keyboard is open) |
-| Y | Space |
-| Laser + trigger on a text field | Open the on-screen keyboard (pilot name) |
-| Left Menu, short press | Escape |
+| Input | Game menus and in-flight screens | OpenTIE settings (Escape) |
+|---|---|---|
+| Left controller | Laser pointer | - |
+| Left trigger | Click | Previous page |
+| Left grip | Right-click | Next page |
+| Left stick | Arrow keys, one step per push | Move the selection |
+| X | Enter | Select |
+| Y | Space | Back |
+| Left Menu, short press | Escape | Close |
+| Laser + trigger on a text field | Open the on-screen keyboard (pilot name) | - |
 
 Flight (the Touch controllers act as one gamepad; every button can be
 remapped in Settings > Controller):
