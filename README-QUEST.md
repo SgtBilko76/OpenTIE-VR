@@ -57,7 +57,7 @@ remapped in Settings > Controller):
 
 | Input | Action |
 |---|---|
-| Left stick | Pitch and yaw |
+| Left stick | Pitch and yaw (up = nose down, like a flight stick) |
 | Right stick left/right | Roll |
 | Right stick up/down | Throttle lever (stays where you leave it) |
 | Right trigger | Fire |
@@ -109,14 +109,15 @@ CMake, Ninja, Python 3.
     tools/quest/deploy.sh          # install, copy game data once, launch
 
 VR code: `src/tie_vr/` (OpenXR session, input, layers; `tie_vr.c` is
-generated from OpenXWA-VR's `xwa_vr.c` by `tools/quest/gen_tie_vr.py`),
+generated from OpenXWA-VR's `xwa_vr.c` by `tools/quest/gen_tie_vr.py`;
+radial menus in `vr_radial_menu.c` and `tools/quest/tie_vr_radial.inc.c`),
 `src/tie_remaster/vr_stereo.*` and `flight/passes.c` (per-eye rendering),
 `tools/quest/gen_vr_cockpit.py` (3D cockpit model),
 `tools/quest/gen_revival_cockpits.py` (X-Wing Revival cockpits, converted
 at build time from Revival's free game data; set `XW_REVIVAL_DATA` to its
 `gamedata` folder), `src/tie_app/vr_keyboard.*`
-(on-screen keyboard) and the `quest-vr-tie` branch of the
-[Aeron engine fork](https://github.com/SgtBilko76/Aeron/tree/quest-vr-tie).
+(on-screen keyboard) and the Quest VR engine changes in the `aeron`
+submodule ([Aeron commit 33bd7b7](https://github.com/elyosh/Aeron/tree/33bd7b732ae636f6c6a89bfb350372aad6f6a2ce)).
 
 ## Credits
 
