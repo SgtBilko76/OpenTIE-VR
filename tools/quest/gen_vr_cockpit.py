@@ -257,7 +257,9 @@ PANELS = [
     ("console", (180, 272, 460, 456), 0.0, -0.44, 0.58, 0.34, "console"),
     ("readouts", (546, 300, 640, 448), 0.70, -0.46, 0.58, 0.11, "readouts"),
     ("threat", (2, 350, 114, 452), -0.70, -0.46, 0.58, 0.13, "threat"),
-    ("messages", (0, 456, 640, 480), 0.0, -0.20, 0.95, 0.80, "strip"),
+    # Messages below all instruments (their lowest edges sit 31-34 deg down),
+    # not just above the console where the strip covered its top.
+    ("messages", (0, 456, 640, 480), 0.0, -0.77, 0.95, 0.80, "strip"),
 ]
 # The HUD (crosshair, target box) stays world-aligned on the far overlay
 # quad; only this classic region (the window, clear of all panels) is shown
@@ -267,7 +269,7 @@ HUD_RECT = (112, 0, 528, 270)
 # The other craft (used with X-Wing Alliance's cockpit models, no housings in
 # the generated model): instrument rects measured by hand on the
 # CP640/<view>.LFD pictures; placed automatically by auto_place().
-MESSAGES = ("messages", (0, 456, 640, 480), 0.0, -0.20, 0.95, 0.80, "strip")
+MESSAGES = ("messages", (0, 456, 640, 480), 0.0, -0.77, 0.95, 0.80, "strip")
 OTHER_VIEWS = {
     "TIEINT12": ((112, 0, 528, 276), [
         ("radar_l", (4, 0, 112, 102)), ("radar_r", (528, 0, 636, 102)),
@@ -531,10 +533,7 @@ def main():
     panels = build_panels(m)
     views = [("TIEFTR12", "TIECOCKPIT.OPT", 1, HUD_RECT, panels)]
     for view, (hud, rects) in OTHER_VIEWS.items():
-        messages = MESSAGES
-        if view.startswith(("GUNBT", "MISSBT")):
-            # The boats' wide console fills the lower view: messages go on top.
-            messages = MESSAGES[:3] + (0.42,) + MESSAGES[4:]
+        messages = MESSAGES  # below the instruments in every cockpit, boats included
         placed = [auto_place(name, rect) for name, rect in rects] + [messages]
         model = "TIEBOMBERCOCKPIT.OPT" if view.startswith("TIEBMB") else "TIECOCKPIT.OPT"
         views.append((view, model, 0, hud, build_panels(None, placed)))
