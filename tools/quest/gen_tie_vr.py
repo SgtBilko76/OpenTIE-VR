@@ -392,6 +392,24 @@ PITCH_INVERT = [
 ]
 
 
+# Left Menu in flight opens the OpenTIE settings overlay (which pauses the
+# game) instead of TIE Fighter's own pause, as in OpenXW-VR: through the
+# escape action (same path as the right star's "Flight menu"), so saved pad
+# bindings don't matter. The tap is consumed so the Escape it would type in
+# menus does not close the overlay again. Applied with MENU_EDITS.
+MENU_BUTTON_EDITS = [
+    ("\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, g_vr.menu_tap_frames > 0);\n"
+     "\tSDL_UnlockJoysticks();\n",
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);\n"
+     "\tSDL_UnlockJoysticks();\n"
+     "\tif (g_vr.menu_tap_frames > 0) {\n"
+     "\t\tg_vr.menu_tap_frames = 0;\n"
+     "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);\n"
+     "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);\n"
+     "\t\tAeron_LogInfo(VR_LOG, \"left Menu: OpenTIE menu\");\n"
+     "\t}\n"),
+]
+
 # Menus with the left controller only, ported from OpenXW-VR's
 # tools/quest/gen_xw_vr.py (Bilko: the right controller is distracting in
 # menus). Applied after RADIAL_REPLACEMENTS; each pattern must occur once.
@@ -502,7 +520,7 @@ def main() -> int:
             print(f"pattern not found: {old[:70]!r}", file=sys.stderr)
             return 1
         text = text.replace(old, new)
-    for old, new in RADIAL_REPLACEMENTS + PITCH_INVERT + MENU_EDITS + PASSTHROUGH_REMOVALS:
+    for old, new in RADIAL_REPLACEMENTS + PITCH_INVERT + MENU_EDITS + MENU_BUTTON_EDITS + PASSTHROUGH_REMOVALS:
         if text.count(old) != 1:
             print(f"pattern found {text.count(old)} times (want 1): {old[:70]!r}", file=sys.stderr)
             return 1

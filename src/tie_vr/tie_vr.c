@@ -1251,8 +1251,14 @@ static void vr_update_gamepad(int in_flight, float dt) {
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_GUIDE, 0);
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK, g_vr.stick_click[VR_LEFT]);
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_BACK, 0);
-	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, g_vr.menu_tap_frames > 0);
+	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);
 	SDL_UnlockJoysticks();
+	if (g_vr.menu_tap_frames > 0) {
+		g_vr.menu_tap_frames = 0;
+		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);
+		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);
+		Aeron_LogInfo(VR_LOG, "left Menu: OpenTIE menu");
+	}
 }
 
 /* ------------------------------------------------------------------------ */

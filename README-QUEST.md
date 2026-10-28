@@ -68,7 +68,7 @@ remapped in Settings > Controller):
 | X / Y | Target my attacker / match target speed |
 | Left stick click | Back to cockpit view |
 | Right stick click | Hyperspace |
-| Left Menu | Pause |
+| Left Menu | OpenTIE menu (pauses the game) |
 | Left grip (hold) | Radial menu: weapons and power |
 | Right grip (hold) | Radial menu: targets and orders |
 
@@ -85,7 +85,7 @@ fly while it is choosing; everything else keeps working.
 | Down-right | Full throttle | Wingmen: attack my target |
 | Down | Throttle down | Wingmen: cover me |
 | Down-left | Beam weapon on/off | Mission goals |
-| Left | Cycle firing mode | Flight menu (Escape) |
+| Left | Cycle firing mode | OpenTIE menu (pauses) |
 | Up-left | Cycle shield direction | Target's attacker |
 
 ## Known limitations (beta)
