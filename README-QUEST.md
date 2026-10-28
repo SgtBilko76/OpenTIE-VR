@@ -68,7 +68,7 @@ remapped in Settings > Controller):
 | X / Y | Target my attacker / match target speed |
 | Left stick click | Back to cockpit view |
 | Right stick click | Hyperspace |
-| Left Menu | OpenTIE menu (pauses the game) |
+| Left Menu | OpenTIE menu (pauses the game); on the map and other in-flight screens: back to the cockpit |
 | Left grip (hold) | Radial menu: weapons and power |
 | Right grip (hold) | Radial menu: targets and orders |
 

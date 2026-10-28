@@ -402,11 +402,26 @@ MENU_BUTTON_EDITS = [
      "\tSDL_UnlockJoysticks();\n",
      "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);\n"
      "\tSDL_UnlockJoysticks();\n"
-     "\tif (g_vr.menu_tap_frames > 0) {\n"
+     "\tif (g_vr.menu_tap_frames > 0 && !TieSettings_Open() &&\n"
+     "\t\tTieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL) {\n"
      "\t\tg_vr.menu_tap_frames = 0;\n"
      "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);\n"
      "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);\n"
      "\t\tAeron_LogInfo(VR_LOG, \"left Menu: OpenTIE menu\");\n"
+     "\t}\n"),
+    # What the left Menu tap types elsewhere: Escape in the main menus and to
+    # close the OpenTIE settings (whatever vr_update_gamepad decided), Q on
+    # the in-flight screens (map, goals, messages, damage, wingmen, help all
+    # close with Q; Escape there is taken by OpenTIE's settings shortcut).
+    ("\tvr_set_key(VR_KEY_MENU, SDL_SCANCODE_ESCAPE, !in_flight && g_vr.menu_tap_frames > 0);\n",
+     "\t{\n"
+     "\t\tconst SDL_Scancode menu_key = TieSettings_Open() || !vr_in_flight() ? SDL_SCANCODE_ESCAPE\n"
+     "\t\t\t\t\t\t\t\t\t  : TieFlightScreen_Active() != TIE_FLIGHT_SCREEN_NORMAL ? SDL_SCANCODE_Q\n"
+     "\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t  : SDL_SCANCODE_UNKNOWN;\n"
+     "\t\tif (g_vr.menu_tap_frames > 0 && menu_key != SDL_SCANCODE_UNKNOWN && g_vr.held_key[VR_KEY_MENU] == SDL_SCANCODE_UNKNOWN) {\n"
+     "\t\t\tAeron_LogInfo(VR_LOG, \"left Menu: %s\", menu_key == SDL_SCANCODE_Q ? \"close screen (Q)\" : \"Escape\");\n"
+     "\t\t}\n"
+     "\t\tvr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0);\n"
      "\t}\n"),
 ]
 

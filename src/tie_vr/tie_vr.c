@@ -1253,7 +1253,8 @@ static void vr_update_gamepad(int in_flight, float dt) {
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_BACK, 0);
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);
 	SDL_UnlockJoysticks();
-	if (g_vr.menu_tap_frames > 0) {
+	if (g_vr.menu_tap_frames > 0 && !TieSettings_Open() &&
+		TieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL) {
 		g_vr.menu_tap_frames = 0;
 		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);
 		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);
@@ -1383,7 +1384,15 @@ static void vr_update_menu_keys(int in_flight) {
 	vr_set_key(VR_KEY_RSTICK_CLICK, SDL_SCANCODE_UNKNOWN, 0);
 	vr_set_key(VR_KEY_LSTICK_CLICK, SDL_SCANCODE_UNKNOWN, 0);
 	vr_set_key(VR_KEY_LTRIGGER, SDL_SCANCODE_UNKNOWN, 0);
-	vr_set_key(VR_KEY_MENU, SDL_SCANCODE_ESCAPE, !in_flight && g_vr.menu_tap_frames > 0);
+	{
+		const SDL_Scancode menu_key = TieSettings_Open() || !vr_in_flight() ? SDL_SCANCODE_ESCAPE
+									  : TieFlightScreen_Active() != TIE_FLIGHT_SCREEN_NORMAL ? SDL_SCANCODE_Q
+																							  : SDL_SCANCODE_UNKNOWN;
+		if (g_vr.menu_tap_frames > 0 && menu_key != SDL_SCANCODE_UNKNOWN && g_vr.held_key[VR_KEY_MENU] == SDL_SCANCODE_UNKNOWN) {
+			Aeron_LogInfo(VR_LOG, "left Menu: %s", menu_key == SDL_SCANCODE_Q ? "close screen (Q)" : "Escape");
+		}
+		vr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0);
+	}
 	vr_update_menu_arrows(menu && !g_vr.text_mode, lx, ly);
 }
 
