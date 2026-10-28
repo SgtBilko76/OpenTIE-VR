@@ -2,8 +2,8 @@
  *
  * The game keeps rendering a normal flat frame; Aeron composes that frame into
  * an OpenXR swapchain (external presentation hooks) which is shown as a large
- * virtual screen in front of the player, over Quest passthrough in the menus
- * and over black space in flight.
+ * virtual screen in front of the player, over black in the menus and over
+ * space in flight.
  *
  * Touch controllers:
  *  - a virtual SDL gamepad (sticks, throttle, fire, target-in-sights) that the
@@ -114,11 +114,6 @@ typedef enum VrKeySlot {
 	X(xrLocateViews)
 XR_FUNCTIONS(XR_FN)
 static PFN_xrGetInstanceProcAddr       p_xrGetInstanceProcAddr;
-static PFN_xrCreatePassthroughFB       p_xrCreatePassthroughFB;
-static PFN_xrPassthroughStartFB        p_xrPassthroughStartFB;
-static PFN_xrCreatePassthroughLayerFB  p_xrCreatePassthroughLayerFB;
-static PFN_xrDestroyPassthroughFB      p_xrDestroyPassthroughFB;
-static PFN_xrDestroyPassthroughLayerFB p_xrDestroyPassthroughLayerFB;
 static PFN_xrGetDisplayRefreshRateFB   p_xrGetDisplayRefreshRateFB;
 static PFN_xrRequestDisplayRefreshRateFB p_xrRequestDisplayRefreshRateFB;
 
@@ -177,11 +172,6 @@ static struct {
 	int                   views_valid;
 	int                   stereo_published;
 	float                 screen_width_m;
-	/* Passthrough (XR_FB_passthrough) */
-	int                   want_passthrough;
-	int                   has_passthrough;
-	XrPassthroughFB       passthrough;
-	XrPassthroughLayerFB  passthrough_layer;
 	/* Input */
 	XrActionSet           action_set;
 	XrAction              act_aim;
@@ -434,11 +424,6 @@ static int vr_load_functions(void) {
 #undef XR_LOAD
 #define XR_LOAD_OPTIONAL(name) \
 	p_xrGetInstanceProcAddr(g_vr.instance, #name, (PFN_xrVoidFunction*)&p_##name);
-	XR_LOAD_OPTIONAL(xrCreatePassthroughFB)
-	XR_LOAD_OPTIONAL(xrPassthroughStartFB)
-	XR_LOAD_OPTIONAL(xrCreatePassthroughLayerFB)
-	XR_LOAD_OPTIONAL(xrDestroyPassthroughFB)
-	XR_LOAD_OPTIONAL(xrDestroyPassthroughLayerFB)
 	XR_LOAD_OPTIONAL(xrGetDisplayRefreshRateFB)
 	XR_LOAD_OPTIONAL(xrRequestDisplayRefreshRateFB)
 #undef XR_LOAD_OPTIONAL
@@ -451,7 +436,6 @@ static int         g_vr_extension_count;
 
 static void vr_pick_extensions(void) {
 	static const char* const wanted[] = {
-		XR_FB_PASSTHROUGH_EXTENSION_NAME,
 		XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME,
 		/* PICO 4 / Neo 3 controllers (same button layout as Touch). */
 		"XR_BD_controller_interaction",
@@ -493,9 +477,7 @@ static void vr_pick_extensions(void) {
 	SDL_free(props);
 	for (int i = 0; i < g_vr_extension_count; ++i) {
 		Aeron_LogInfo(VR_LOG, "requesting OpenXR extension %s", g_vr_extensions[i]);
-		if (strcmp(g_vr_extensions[i], XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0) {
-			g_vr.want_passthrough = 1;
-		} else if (strcmp(g_vr_extensions[i], "XR_BD_controller_interaction") == 0) {
+		if (strcmp(g_vr_extensions[i], "XR_BD_controller_interaction") == 0) {
 			g_vr.has_bd_controllers = 1;
 		}
 	}
@@ -621,29 +603,6 @@ static int vr_create_actions(void) {
 	return 1;
 }
 
-static void vr_create_passthrough(void) {
-	XrPassthroughCreateInfoFB      create = { XR_TYPE_PASSTHROUGH_CREATE_INFO_FB };
-	XrPassthroughLayerCreateInfoFB layer  = { XR_TYPE_PASSTHROUGH_LAYER_CREATE_INFO_FB };
-
-	if (!g_vr.want_passthrough || !p_xrCreatePassthroughFB || !p_xrCreatePassthroughLayerFB ||
-		!p_xrPassthroughStartFB) {
-		return;
-	}
-	create.flags = XR_PASSTHROUGH_IS_RUNNING_AT_CREATION_BIT_FB;
-	if (!vr_ok(p_xrCreatePassthroughFB(g_vr.session, &create, &g_vr.passthrough), "xrCreatePassthroughFB")) {
-		return;
-	}
-	layer.passthrough = g_vr.passthrough;
-	layer.flags       = XR_PASSTHROUGH_IS_RUNNING_AT_CREATION_BIT_FB;
-	layer.purpose     = XR_PASSTHROUGH_LAYER_PURPOSE_RECONSTRUCTION_FB;
-	if (!vr_ok(p_xrCreatePassthroughLayerFB(g_vr.session, &layer, &g_vr.passthrough_layer),
-			   "xrCreatePassthroughLayerFB")) {
-		return;
-	}
-	g_vr.has_passthrough = 1;
-	Aeron_LogInfo(VR_LOG, "passthrough enabled for menus");
-}
-
 static SDL_GPUTextureFormat vr_pick_format(int* out_ok) {
 	static const SDL_GPUTextureFormat preferred[] = {
 		SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
@@ -742,7 +701,6 @@ static int vr_device_created(SDL_GPUDevice* device, AeronExternalPresentTarget* 
 	if (!vr_create_actions()) {
 		return 0;
 	}
-	vr_create_passthrough();
 
 	g_vr.refresh_hz = 72.0f;
 	/* Pin the panel rate: an unpinned rate drifts and the frame pacing
@@ -1774,7 +1732,6 @@ static uint32_t vr_add_cockpit_panels(XrCompositionLayerQuad* hud, const float h
 
 static void vr_end_xr_frame(void) {
 	XrFrameEndInfo                     end_info = { XR_TYPE_FRAME_END_INFO };
-	XrCompositionLayerPassthroughFB    passthrough = { XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB };
 	XrCompositionLayerQuad             quad        = { XR_TYPE_COMPOSITION_LAYER_QUAD };
 	XrCompositionLayerProjection       projection  = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
 	XrCompositionLayerProjectionView   proj_views[2];
@@ -1782,7 +1739,6 @@ static void vr_end_xr_frame(void) {
 	XrCompositionLayerQuad             panel_quads[16];
 	XrCompositionLayerQuad             radial_quads[VR_HAND_COUNT];
 	uint32_t                           layer_count = 0;
-	const int                          in_flight   = vr_in_flight();
 	const int stereo = g_vr.stereo_published && g_vr.views_valid && TieRemasterVr_StereoRendered();
 	float     hud_tan[4];
 
@@ -1818,12 +1774,6 @@ static void vr_end_xr_frame(void) {
 			projection.viewCount  = 2;
 			projection.views      = proj_views;
 			layers[layer_count++] = (const XrCompositionLayerBaseHeader*)&projection;
-		}
-		if (g_vr.has_passthrough && !in_flight) {
-			passthrough.flags       = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-			passthrough.space       = XR_NULL_HANDLE;
-			passthrough.layerHandle = g_vr.passthrough_layer;
-			layers[layer_count++]   = (const XrCompositionLayerBaseHeader*)&passthrough;
 		}
 		if (g_vr.image_ever_released) {
 			quad.layerFlags                       = 0;
@@ -1875,12 +1825,6 @@ static void vr_shutdown(SDL_GPUDevice* device, void* userdata) {
 	vr_release_all_keys();
 	if (g_vr.frame_begun || g_vr.image_acquired) {
 		vr_end_xr_frame();
-	}
-	if (g_vr.passthrough_layer && p_xrDestroyPassthroughLayerFB) {
-		p_xrDestroyPassthroughLayerFB(g_vr.passthrough_layer);
-	}
-	if (g_vr.passthrough && p_xrDestroyPassthroughFB) {
-		p_xrDestroyPassthroughFB(g_vr.passthrough);
 	}
 	for (int hand = 0; hand < VR_HAND_COUNT; ++hand) {
 		vr_panel_destroy(device, &g_vr.radial[hand].panel);

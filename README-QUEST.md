@@ -3,7 +3,7 @@
 **Download, install guide, controls and pictures: [portroyale.online/opentie.html](https://portroyale.online/opentie.html)**
 
 Standalone Meta Quest 3 port of OpenTIE (Star Wars: TIE Fighter) with
-OpenXR: menus on a virtual screen over passthrough, head-tracked stereo 3D
+OpenXR: menus on a virtual screen, head-tracked stereo 3D
 space in flight, 3D cockpits with the original instruments, and
 Touch controller support.
 

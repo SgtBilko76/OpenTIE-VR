@@ -13,6 +13,7 @@ ported here as REPLACEMENTS / .inc.c files (e.g. the radial menus) rather than
 by moving the base.
 """
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -335,6 +336,53 @@ RADIAL_REPLACEMENTS = [
 ]
 
 
+# Passthrough removed (as in OpenXWA-VR 0.1.8): the menus float in front of
+# black on every headset. Applied last; each pattern must occur exactly once.
+PASSTHROUGH_REMOVALS = [
+    (" * virtual screen in front of the player, over Quest passthrough in the menus\n"
+     " * and over black space in flight.\n",
+     " * virtual screen in front of the player, over black in the menus and over\n"
+     " * space in flight.\n"),
+    ("static PFN_xrCreatePassthroughFB       p_xrCreatePassthroughFB;\n"
+     "static PFN_xrPassthroughStartFB        p_xrPassthroughStartFB;\n"
+     "static PFN_xrCreatePassthroughLayerFB  p_xrCreatePassthroughLayerFB;\n"
+     "static PFN_xrDestroyPassthroughFB      p_xrDestroyPassthroughFB;\n"
+     "static PFN_xrDestroyPassthroughLayerFB p_xrDestroyPassthroughLayerFB;\n", ""),
+    ("\t/* Passthrough (XR_FB_passthrough) */\n"
+     "\tint                   want_passthrough;\n"
+     "\tint                   has_passthrough;\n"
+     "\tXrPassthroughFB       passthrough;\n"
+     "\tXrPassthroughLayerFB  passthrough_layer;\n", ""),
+    ("\tXR_LOAD_OPTIONAL(xrCreatePassthroughFB)\n"
+     "\tXR_LOAD_OPTIONAL(xrPassthroughStartFB)\n"
+     "\tXR_LOAD_OPTIONAL(xrCreatePassthroughLayerFB)\n"
+     "\tXR_LOAD_OPTIONAL(xrDestroyPassthroughFB)\n"
+     "\tXR_LOAD_OPTIONAL(xrDestroyPassthroughLayerFB)\n", ""),
+    ("\t\tXR_FB_PASSTHROUGH_EXTENSION_NAME,\n", ""),
+    ("\t\tif (strcmp(g_vr_extensions[i], XR_FB_PASSTHROUGH_EXTENSION_NAME) == 0) {\n"
+     "\t\t\tg_vr.want_passthrough = 1;\n"
+     "\t\t} else if (", "\t\tif ("),
+    ("\tvr_create_passthrough();\n", ""),
+    ("\tXrCompositionLayerPassthroughFB    passthrough = { XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB };\n", ""),
+    ("\tconst int                          in_flight   = vr_in_flight();\n"
+     "\tconst int stereo = g_vr.stereo_published && g_vr.views_valid && TieRemasterVr_StereoRendered();\n",
+     "\tconst int stereo = g_vr.stereo_published && g_vr.views_valid && TieRemasterVr_StereoRendered();\n"),
+    ("\t\tif (g_vr.has_passthrough && !in_flight) {\n"
+     "\t\t\tpassthrough.flags       = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;\n"
+     "\t\t\tpassthrough.space       = XR_NULL_HANDLE;\n"
+     "\t\t\tpassthrough.layerHandle = g_vr.passthrough_layer;\n"
+     "\t\t\tlayers[layer_count++]   = (const XrCompositionLayerBaseHeader*)&passthrough;\n"
+     "\t\t}\n", ""),
+    ("\tif (g_vr.passthrough_layer && p_xrDestroyPassthroughLayerFB) {\n"
+     "\t\tp_xrDestroyPassthroughLayerFB(g_vr.passthrough_layer);\n"
+     "\t}\n"
+     "\tif (g_vr.passthrough && p_xrDestroyPassthroughFB) {\n"
+     "\t\tp_xrDestroyPassthroughFB(g_vr.passthrough);\n"
+     "\t}\n", ""),
+]
+PASSTHROUGH_FUNCTION = re.compile(r"static void vr_create_passthrough\(void\) \{\n.*?\n\}\n\n", re.S)
+
+
 def base_source() -> str:
     return subprocess.run(["git", "-C", str(XWA_REPO), "show", f"{XWA_BASE}:{SRC_PATH}"],
                           check=True, capture_output=True, text=True).stdout
@@ -347,11 +395,18 @@ def main() -> int:
             print(f"pattern not found: {old[:70]!r}", file=sys.stderr)
             return 1
         text = text.replace(old, new)
-    for old, new in RADIAL_REPLACEMENTS:
+    for old, new in RADIAL_REPLACEMENTS + PASSTHROUGH_REMOVALS:
         if text.count(old) != 1:
             print(f"pattern found {text.count(old)} times (want 1): {old[:70]!r}", file=sys.stderr)
             return 1
         text = text.replace(old, new)
+    text, n = PASSTHROUGH_FUNCTION.subn("", text)
+    if n != 1:
+        print(f"vr_create_passthrough found {n} times (want 1)", file=sys.stderr)
+        return 1
+    if re.search(r"(?i)passthrough", text):
+        print("passthrough code remains", file=sys.stderr)
+        return 1
     leftovers = [w for w in ("Xwa", "xwa", "XWA", "g_inHangar") if w in text]
     if leftovers:
         print(f"unconverted identifiers remain: {leftovers}", file=sys.stderr)
