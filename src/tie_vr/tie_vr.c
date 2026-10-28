@@ -194,6 +194,7 @@ static struct {
 	int                   arrow_armed;
 	float                 menu_held_s;
 	int                   menu_long_done, menu_tap_frames;
+	int                   menu_tap_opens; /* this tap opens the OpenTIE menu */
 	int                   text_mode_was_on;
 	int                   text_a_was_down, text_b_was_down, text_y_was_down;
 	int                   dial_index, dial_pending, dial_dir_x, dial_dir_y;
@@ -1253,8 +1254,7 @@ static void vr_update_gamepad(int in_flight, float dt) {
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_BACK, 0);
 	SDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);
 	SDL_UnlockJoysticks();
-	if (g_vr.menu_tap_frames > 0 && !TieSettings_Open() &&
-		TieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL) {
+	if (g_vr.menu_tap_frames > 0 && g_vr.menu_tap_opens) {
 		g_vr.menu_tap_frames = 0;
 		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);
 		TieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);
@@ -1391,7 +1391,7 @@ static void vr_update_menu_keys(int in_flight) {
 		if (g_vr.menu_tap_frames > 0 && menu_key != SDL_SCANCODE_UNKNOWN && g_vr.held_key[VR_KEY_MENU] == SDL_SCANCODE_UNKNOWN) {
 			Aeron_LogInfo(VR_LOG, "left Menu: %s", menu_key == SDL_SCANCODE_Q ? "close screen (Q)" : "Escape");
 		}
-		vr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0);
+		vr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0 && !g_vr.menu_tap_opens);
 	}
 	vr_update_menu_arrows(menu && !g_vr.text_mode, lx, ly);
 }
@@ -1492,6 +1492,8 @@ static void vr_update_menu_button(float dt) {
 	if (g_vr.menu_held_s > 0.0f && !g_vr.menu_long_done) {
 		/* Short press: hold Escape / Start for a few frames. */
 		g_vr.menu_tap_frames = 4;
+		g_vr.menu_tap_opens  = vr_in_flight() && !TieSettings_Open() &&
+							  TieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL;
 	}
 	g_vr.menu_held_s    = 0.0f;
 	g_vr.menu_long_done = 0;
@@ -1826,7 +1828,9 @@ static void vr_end_xr_frame(void) {
 			quad.pose.position.z                  = -VR_SCREEN_DISTANCE;
 			quad.size.width                       = g_vr.screen_width_m;
 			quad.size.height                      = vr_screen_height_m();
-			if (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {
+			if (stereo && TieSettings_Open()) {
+				quad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+			} else if (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {
 				/* HUD overlay: the game camera's frustum seen from the seat, so
 				 * target boxes sit on their ships. Premultiplied alpha. */
 				quad.layerFlags      = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
@@ -1837,7 +1841,8 @@ static void vr_end_xr_frame(void) {
 				quad.size.height     = VR_HUD_DISTANCE * (hud_tan[2] + hud_tan[3]);
 			}
 			layers[layer_count++]                 = (const XrCompositionLayerBaseHeader*)&quad;
-			if (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {
+			if (stereo && !TieSettings_Open() &&
+				TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {
 				layer_count = vr_add_cockpit_panels(&quad, hud_tan, layers, layer_count,
 												  (uint32_t)SDL_arraysize(layers), panel_quads);
 			}

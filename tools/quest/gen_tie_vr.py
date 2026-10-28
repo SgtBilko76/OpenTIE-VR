@@ -398,12 +398,38 @@ PITCH_INVERT = [
 # bindings don't matter. The tap is consumed so the Escape it would type in
 # menus does not close the overlay again. Applied with MENU_EDITS.
 MENU_BUTTON_EDITS = [
+    # Each tap decides once, when it starts, whether it opens the OpenTIE menu
+    # (in the cockpit) or types a key (menus, in-flight screens); otherwise the
+    # tap that closed the menu reopened it on its next frame.
+    ("\tint                   menu_long_done, menu_tap_frames;\n",
+     "\tint                   menu_long_done, menu_tap_frames;\n"
+     "\tint                   menu_tap_opens; /* this tap opens the OpenTIE menu */\n"),
+    ("\t\t/* Short press: hold Escape / Start for a few frames. */\n"
+     "\t\tg_vr.menu_tap_frames = 4;\n",
+     "\t\t/* Short press: hold Escape / Start for a few frames. */\n"
+     "\t\tg_vr.menu_tap_frames = 4;\n"
+     "\t\tg_vr.menu_tap_opens  = vr_in_flight() && !TieSettings_Open() &&\n"
+     "\t\t\t\t\t\t\t  TieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL;\n"),
+    # The OpenTIE menu over the 3D cockpit: the flat image is normally split
+    # into the window (HUD) region and the instrument panels, which cut the
+    # menu into pieces. While it is open the whole image is one screen in
+    # front of the player, over the paused stereo view.
+    ("\t\t\tif (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {\n"
+     "\t\t\t\t/* HUD overlay:",
+     "\t\t\tif (stereo && TieSettings_Open()) {\n"
+     "\t\t\t\tquad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;\n"
+     "\t\t\t} else if (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {\n"
+     "\t\t\t\t/* HUD overlay:"),
+    ("\t\t\tif (stereo && TieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {\n"
+     "\t\t\t\tlayer_count = vr_add_cockpit_panels(",
+     "\t\t\tif (stereo && !TieSettings_Open() &&\n"
+     "\t\t\t\tTieRemasterVr_HudTangents(&hud_tan[0], &hud_tan[1], &hud_tan[2], &hud_tan[3])) {\n"
+     "\t\t\t\tlayer_count = vr_add_cockpit_panels("),
     ("\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, g_vr.menu_tap_frames > 0);\n"
      "\tSDL_UnlockJoysticks();\n",
      "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_START, 0);\n"
      "\tSDL_UnlockJoysticks();\n"
-     "\tif (g_vr.menu_tap_frames > 0 && !TieSettings_Open() &&\n"
-     "\t\tTieFlightScreen_Active() == TIE_FLIGHT_SCREEN_NORMAL) {\n"
+     "\tif (g_vr.menu_tap_frames > 0 && g_vr.menu_tap_opens) {\n"
      "\t\tg_vr.menu_tap_frames = 0;\n"
      "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, true);\n"
      "\t\tTieInputActions_DispatchController(TIE_INPUT_ACTION_ESCAPE, false);\n"
@@ -421,7 +447,7 @@ MENU_BUTTON_EDITS = [
      "\t\tif (g_vr.menu_tap_frames > 0 && menu_key != SDL_SCANCODE_UNKNOWN && g_vr.held_key[VR_KEY_MENU] == SDL_SCANCODE_UNKNOWN) {\n"
      "\t\t\tAeron_LogInfo(VR_LOG, \"left Menu: %s\", menu_key == SDL_SCANCODE_Q ? \"close screen (Q)\" : \"Escape\");\n"
      "\t\t}\n"
-     "\t\tvr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0);\n"
+     "\t\tvr_set_key(VR_KEY_MENU, menu_key, g_vr.menu_tap_frames > 0 && !g_vr.menu_tap_opens);\n"
      "\t}\n"),
 ]
 
