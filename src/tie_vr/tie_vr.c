@@ -1211,7 +1211,7 @@ static void vr_update_gamepad(int in_flight, float dt) {
 	SDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTX,
 							   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(right.x));
 	SDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTY,
-							   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(-right.y)); /* SDL: up is negative */
+							   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(right.y)); /* inverted pitch: stick up = SDL down */
 	SDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_LEFTX, vr_axis(roll));
 	SDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_LEFTY, vr_axis(g_vr.throttle * 2.0f - 1.0f));
 	SDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, vr_trigger_axis(g_vr.trigger[VR_LEFT]));

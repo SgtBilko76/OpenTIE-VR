@@ -383,6 +383,15 @@ PASSTHROUGH_REMOVALS = [
 PASSTHROUGH_FUNCTION = re.compile(r"static void vr_create_passthrough\(void\) \{\n.*?\n\}\n\n", re.S)
 
 
+# Pitch inverted on the left stick (Bilko's choice): pushing the stick up now
+# reports +RIGHTY (stick down on an SDL pad) instead of -RIGHTY. Applied after
+# RADIAL_REPLACEMENTS; must occur exactly once.
+PITCH_INVERT = [
+    ("\t\t\t\t\t\t\t   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(-right.y)); /* SDL: up is negative */\n",
+     "\t\t\t\t\t\t\t   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(right.y)); /* inverted pitch: stick up = SDL down */\n"),
+]
+
+
 def base_source() -> str:
     return subprocess.run(["git", "-C", str(XWA_REPO), "show", f"{XWA_BASE}:{SRC_PATH}"],
                           check=True, capture_output=True, text=True).stdout
@@ -395,7 +404,7 @@ def main() -> int:
             print(f"pattern not found: {old[:70]!r}", file=sys.stderr)
             return 1
         text = text.replace(old, new)
-    for old, new in RADIAL_REPLACEMENTS + PASSTHROUGH_REMOVALS:
+    for old, new in RADIAL_REPLACEMENTS + PITCH_INVERT + PASSTHROUGH_REMOVALS:
         if text.count(old) != 1:
             print(f"pattern found {text.count(old)} times (want 1): {old[:70]!r}", file=sys.stderr)
             return 1
