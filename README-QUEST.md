@@ -62,17 +62,29 @@ remapped in Settings > Controller):
 | Right stick up/down | Throttle lever (stays where you leave it) |
 | Right trigger | Fire |
 | Left trigger | Target / roll-throttle modifier |
-| Right grip | High-angle view |
 | A / B | Next target / nearest fighter |
 | X / Y | Target my attacker / match target speed |
 | Left stick click | Back to cockpit view |
 | Right stick click | Hyperspace |
 | Left Menu | Pause |
-| Left grip + A / B | Full throttle / throttle down |
-| Left grip + X / Y | Clear target / Escape (flight menu) |
-| Left grip + left trigger | Cycle firing mode |
-| Left grip + left stick click | Cycle weapon (lasers / warheads) |
-| Left grip + right stick click | Cycle shield direction |
+| Left grip (hold) | Radial menu: weapons and power |
+| Right grip (hold) | Radial menu: targets and orders |
+
+Radial menus: hold a grip and a star of eight commands appears above that
+controller. Tilt the same hand's stick towards a command and release the
+grip to run it; release with the stick centred to cancel. The stick doesn't
+fly while it is choosing; everything else keeps working.
+
+| Direction | Left (weapons and power) | Right (targets and orders) |
+|---|---|---|
+| Up | Laser recharge rate | Clear target |
+| Up-right | Shield recharge rate | Next target component |
+| Right | Cycle weapon (lasers / warheads) | Map |
+| Down-right | Full throttle | Wingmen: attack my target |
+| Down | Throttle down | Wingmen: cover me |
+| Down-left | Beam weapon on/off | Mission goals |
+| Left | Cycle firing mode | Flight menu (Escape) |
+| Up-left | Cycle shield direction | Target's attacker |
 
 ## Known limitations (beta)
 

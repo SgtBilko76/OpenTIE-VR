@@ -9,12 +9,10 @@ one virtual gamepad (src/tie_vr/tie_vr.c, vr_update_gamepad):
   left stick y     -> lefty (throttle lever, stays where it is left)
   triggers         -> lefttrigger / righttrigger
   A / B / X / Y    -> south / east / west / north
-  right grip       -> rightshoulder
   stick clicks     -> leftstick / rightstick
   left Menu (tap)  -> start
-  left grip held (shift layer): A/B/X/Y -> dpaddown/dpadright/dpadleft/dpadup,
-                   right stick click -> back, left stick click -> guide,
-                   left trigger -> leftshoulder
+  The grips open the VR radial menus (tools/quest/tie_vr_radial.inc.c), which
+  run the remaining actions directly; they are not part of the pad.
 
 Usage: quest_config.py <staged resources/config.yaml>
 Only the Quest APK is affected; desktop builds keep the upstream defaults.
@@ -38,17 +36,9 @@ QUEST_GAMEPAD_DEFAULTS = """\
       target_nearest_fighter_or_mine: east
       target_my_attacker: west
       match_speed: north
-      view_toggle_high_angle: rightshoulder
       view_return_to_cockpit: rightstick
       hyperspace: leftstick
       pause: start
-      throttle_full: dpaddown
-      throttle_down: dpadright
-      target_clear: dpadleft
-      escape: dpadup
-      cycle_weapon_group: back
-      cycle_shield_mode: guide
-      cycle_weapon_firing_mode: leftshoulder
 """
 
 

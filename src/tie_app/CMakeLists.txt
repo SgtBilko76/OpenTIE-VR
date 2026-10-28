@@ -25,7 +25,9 @@ set(TIE_APP_SOURCES
     setup/installation.c
     setup/installation_ui.c
     setup/setup.c
-    ${CMAKE_SOURCE_DIR}/src/tie_vr/tie_vr.c)
+    ${CMAKE_SOURCE_DIR}/src/tie_vr/tie_vr.c
+    ${CMAKE_SOURCE_DIR}/src/tie_vr/vr_draw.c
+    ${CMAKE_SOURCE_DIR}/src/tie_vr/vr_radial_menu.c)
 if(ANDROID)
     # Quest: SDLActivity loads the game as libmain.so and calls SDL_main().
     add_library(tie SHARED ${TIE_APP_SOURCES})

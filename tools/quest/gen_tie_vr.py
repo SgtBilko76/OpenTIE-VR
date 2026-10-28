@@ -4,17 +4,58 @@
 The OpenXR session, layers, pointer and virtual gamepad are engine-level code
 shared with the X-Wing Alliance port; only the game hooks differ. This script
 renames the API and swaps the XWA game queries for their OpenTIE equivalents.
-Re-run after pulling OpenXWA-VR VR fixes; hand edits belong in the
-REPLACEMENTS table below so they survive regeneration.
+Hand edits belong in the REPLACEMENTS table below so they survive
+regeneration.
+
+The source is pinned to OpenXWA-VR commit XWA_BASE (read with `git show`, so
+the OpenXWA-VR checkout may be on any commit). Later OpenXWA-VR features are
+ported here as REPLACEMENTS / .inc.c files (e.g. the radial menus) rather than
+by moving the base.
 """
 import pathlib
+import subprocess
 import sys
 
-SRC = pathlib.Path.home() / "Projekte/OpenXWA-VR/src/xwa_vr/xwa_vr.c"
+XWA_REPO = pathlib.Path.home() / "Projekte/OpenXWA-VR"
+XWA_BASE = "dfb8972"  # OpenXWA VR 0.1.2-beta: Quest/PICO controller profiles
+SRC_PATH = "src/xwa_vr/xwa_vr.c"
 DST = pathlib.Path(__file__).resolve().parents[2] / "src/tie_vr/tie_vr.c"
 TEXT_ENTRY = (pathlib.Path(__file__).resolve().parent / "tie_vr_text_entry.inc.c").read_text()
 RECENTER = (pathlib.Path(__file__).resolve().parent / "tie_vr_recenter.inc.c").read_text()
 COCKPIT_PANELS = (pathlib.Path(__file__).resolve().parent / "tie_vr_cockpit_panels.inc.c").read_text()
+RADIAL = (pathlib.Path(__file__).resolve().parent / "tie_vr_radial.inc.c").read_text()
+
+# Radial menus: constants, panel/menu state and the forward declaration used by
+# vr_device_created (the functions live in tools/quest/tie_vr_radial.inc.c).
+RADIAL_TYPES = """/* Radial menus: a panel above the controller, facing the head. */
+static const float    VR_RADIAL_SIZE_M    = 0.30f;
+static const float    VR_RADIAL_LIFT_M    = 0.17f; /* panel centre above the controller */
+static const float    VR_RADIAL_PICK      = 0.55f; /* stick deflection that selects */
+static const float    VR_RADIAL_KEEP      = 0.30f; /* ...and keeps the selection */
+static const uint64_t VR_RADIAL_LINGER_MS = 250;   /* selection survives the stick springing back */
+
+/* A quad layer with its own swapchain, drawn on the CPU (radial menus). */
+typedef struct VrPanel {
+\tXrSwapchain            swapchain;
+\tSDL_GPUTexture**       images;
+\tSDL_GPUTransferBuffer* transfer;
+\tuint8_t*               pixels;
+\tint                    width, height;
+\tint                    ever_released;
+\tint                    dirty;
+} VrPanel;
+
+typedef struct VrRadialState {
+\tVrPanel  panel;
+\tint      visible;
+\tint      selected; /* VR_RADIAL_NONE or item */
+\tint      drawn_selected;
+\tuint64_t selected_ms; /* last time the stick pointed at `selected` */
+\tXrPosef  pose;        /* panel pose in LOCAL space */
+\tint      pose_valid;
+} VrRadialState;
+
+"""
 
 REPLACEMENTS = [
     # Flight sticks follow OpenXWA-VR: left = pitch/yaw, right = roll/throttle.
@@ -190,12 +231,125 @@ REPLACEMENTS = [
      "\t\t\t}\n"),
 ]
 
+# Applied after REPLACEMENTS; each pattern must occur exactly once.
+RADIAL_REPLACEMENTS = [
+    # Radial menus (tools/quest/tie_vr_radial.inc.c, port of OpenXWA-VR 0.1.8):
+    # holding a grip in flight shows that hand's star of eight commands, the
+    # same hand's stick picks one, releasing the grip runs it. They replace the
+    # left-grip shift layer and the right grip's high-angle view (not needed
+    # in VR, so it is no longer reachable from the controllers), so the pad no
+    # longer sends the shoulders, D-pad, back or guide
+    # (tools/quest/quest_config.py drops those bindings).
+    ('#include "tie_remaster/vr_stereo.h"\n#include "tie_vr/tie_vr_cockpit_panels.h"\n',
+     '#include "tie_remaster/vr_stereo.h"\n#include "tie_vr/tie_vr_cockpit_panels.h"\n'
+     '#include "tie_runtime/input/actions.h"\n#include "tie_vr/vr_radial_menu.h"\n'),
+    ("static struct {\n\t/* OpenXR */\n",
+     RADIAL_TYPES + "static struct {\n\t/* OpenXR */\n"),
+    ("\tSDL_Scancode          held_key[VR_KEY_SLOT_COUNT];\n} g_vr;\n",
+     "\tSDL_Scancode          held_key[VR_KEY_SLOT_COUNT];\n"
+     "\t/* In-flight radial menus, one per hand */\n"
+     "\tVrRadialState         radial[VR_HAND_COUNT];\n"
+     "\tint                   panel_bgra;\n"
+     "\tXrVector3f            head_pos; /* last known head position (LOCAL) */\n"
+     "} g_vr;\n\n"
+     "static void vr_create_radials(SDL_GPUTextureFormat format, const XrSwapchainCreateInfo* base);\n"),
+    ("\t\t\t   \"SDL_CreateGPUXRSwapchain\")) {\n\t\treturn 0;\n\t}\n",
+     "\t\t\t   \"SDL_CreateGPUXRSwapchain\")) {\n\t\treturn 0;\n\t}\n"
+     "\tvr_create_radials(format, &swap_info);\n"),
+    ("/* The Touch controllers as one gamepad, mirrored 1:1",
+     RADIAL + "/* The Touch controllers as one gamepad, mirrored 1:1"),
+    (" * The left grip is a shift key: while held, Y/B/A/X become D-pad\n"
+     " * up/right/down/left, the right stick click becomes back and the left stick\n"
+     " * click becomes guide and the left trigger becomes the left shoulder. */\n",
+     " * The grips open the radial menus (vr_update_radials) and are not part of\n"
+     " * the pad; a stick choosing in its menu sends nothing. */\n"),
+    ("\tconst int        shift = g_vr.grip[VR_LEFT] > 0.5f;\n", ""),
+    ("\tlever_input = SDL_fabsf(left.y) > SDL_fabsf(left.x) * 0.75f ? left.y : 0.0f;\n",
+     "\tlever_input = SDL_fabsf(left.y) > SDL_fabsf(left.x) * 0.75f ? left.y : 0.0f;\n"
+     "\tif (g_vr.radial[VR_RIGHT].visible) {\n"
+     "\t\troll        = 0.0f;\n"
+     "\t\tlever_input = 0.0f;\n"
+     "\t}\n"),
+    ("\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTX, vr_axis(right.x));\n"
+     "\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTY, vr_axis(-right.y)); /* SDL: up is negative */\n",
+     "\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTX,\n"
+     "\t\t\t\t\t\t\t   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(right.x));\n"
+     "\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_RIGHTY,\n"
+     "\t\t\t\t\t\t\t   g_vr.radial[VR_LEFT].visible ? 0 : vr_axis(-right.y)); /* SDL: up is negative */\n"),
+    ("\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, vr_trigger_axis(shift ? 0.0f : g_vr.trigger[VR_LEFT]));\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,\n"
+     "\t\t\t\t\t\t\t\t shift && vr_hysteresis(g_vr.trigger_down[VR_LEFT], g_vr.trigger[VR_LEFT]));\n",
+     "\tSDL_SetJoystickVirtualAxis(g_vr.pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, vr_trigger_axis(g_vr.trigger[VR_LEFT]));\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, 0);\n"),
+    ("\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_SOUTH, !shift && g_vr.button_a);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_EAST, !shift && g_vr.button_b);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_WEST, !shift && g_vr.button_x);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_NORTH, !shift && g_vr.button_y);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, shift && g_vr.button_a);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, shift && g_vr.button_b);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT, shift && g_vr.button_x);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_UP, shift && g_vr.button_y);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,\n"
+     "\t\t\t\t\t\t\t\t vr_hysteresis(g_vr.grip_down[VR_RIGHT], g_vr.grip[VR_RIGHT]));\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_LEFT_STICK, !shift && g_vr.stick_click[VR_RIGHT]);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_GUIDE, shift && g_vr.stick_click[VR_RIGHT]);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK, !shift && g_vr.stick_click[VR_LEFT]);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_BACK, shift && g_vr.stick_click[VR_LEFT]);\n",
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_SOUTH, g_vr.button_a);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_EAST, g_vr.button_b);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_WEST, g_vr.button_x);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_NORTH, g_vr.button_y);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_DPAD_UP, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_LEFT_STICK, g_vr.stick_click[VR_RIGHT]);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_GUIDE, 0);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK, g_vr.stick_click[VR_LEFT]);\n"
+     "\tSDL_SetJoystickVirtualButton(g_vr.pad, SDL_GAMEPAD_BUTTON_BACK, 0);\n"),
+    ("\tvr_update_menu_button(dt);\n\tvr_update_gamepad(flying, dt);\n",
+     "\tvr_update_menu_button(dt);\n\tvr_update_radials(flying);\n\tvr_update_gamepad(flying, dt);\n"),
+    ("\tvr_update_input();\n\tvr_prepare_stereo();\n",
+     "\tvr_update_input();\n\tvr_upload_radials();\n\tvr_prepare_stereo();\n"),
+    ("\tg_vr.views_valid      = 1;\n\tg_vr.stereo_published = 1;\n",
+     "\tg_vr.head_pos.x       = (g_vr.views[0].pose.position.x + g_vr.views[1].pose.position.x) * 0.5f;\n"
+     "\tg_vr.head_pos.y       = (g_vr.views[0].pose.position.y + g_vr.views[1].pose.position.y) * 0.5f;\n"
+     "\tg_vr.head_pos.z       = (g_vr.views[0].pose.position.z + g_vr.views[1].pose.position.z) * 0.5f;\n"
+     "\tg_vr.views_valid      = 1;\n\tg_vr.stereo_published = 1;\n"),
+    ("\tconst XrCompositionLayerBaseHeader* layers[20];\n"
+     "\tXrCompositionLayerQuad             panel_quads[16];\n",
+     "\tconst XrCompositionLayerBaseHeader* layers[24];\n"
+     "\tXrCompositionLayerQuad             panel_quads[16];\n"
+     "\tXrCompositionLayerQuad             radial_quads[VR_HAND_COUNT];\n"),
+    ("\t\t\t\t\t\t\t\t\t\t\t\t  (uint32_t)SDL_arraysize(layers), panel_quads);\n"
+     "\t\t\t}\n\t\t}\n",
+     "\t\t\t\t\t\t\t\t\t\t\t\t  (uint32_t)SDL_arraysize(layers), panel_quads);\n"
+     "\t\t\t}\n\t\t}\n"
+     "\t\tlayer_count = vr_add_radials(layers, layer_count, (uint32_t)SDL_arraysize(layers), radial_quads);\n"),
+    ("\tif (g_vr.passthrough && p_xrDestroyPassthroughFB) {\n\t\tp_xrDestroyPassthroughFB(g_vr.passthrough);\n\t}\n",
+     "\tif (g_vr.passthrough && p_xrDestroyPassthroughFB) {\n\t\tp_xrDestroyPassthroughFB(g_vr.passthrough);\n\t}\n"
+     "\tfor (int hand = 0; hand < VR_HAND_COUNT; ++hand) {\n"
+     "\t\tvr_panel_destroy(device, &g_vr.radial[hand].panel);\n"
+     "\t}\n"),
+]
+
+
+def base_source() -> str:
+    return subprocess.run(["git", "-C", str(XWA_REPO), "show", f"{XWA_BASE}:{SRC_PATH}"],
+                          check=True, capture_output=True, text=True).stdout
+
 
 def main() -> int:
-    text = SRC.read_text()
+    text = base_source()
     for old, new in REPLACEMENTS:
         if old not in text:
             print(f"pattern not found: {old[:70]!r}", file=sys.stderr)
+            return 1
+        text = text.replace(old, new)
+    for old, new in RADIAL_REPLACEMENTS:
+        if text.count(old) != 1:
+            print(f"pattern found {text.count(old)} times (want 1): {old[:70]!r}", file=sys.stderr)
             return 1
         text = text.replace(old, new)
     leftovers = [w for w in ("Xwa", "xwa", "XWA", "g_inHangar") if w in text]
